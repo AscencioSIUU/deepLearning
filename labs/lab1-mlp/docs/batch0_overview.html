@@ -1,0 +1,300 @@
+<title>Batch 0 — Andamiaje del repositorio</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --panel: #ece8dd;
+    --ink: #201f1c;
+    --ink-dim: #59564c;
+    --rule: #d8d3c4;
+    --accent: #3949ab;
+    --accent-ink: #ffffff;
+    --accent-soft: #e4e6f7;
+    --good: #2f7a4f;
+    --good-soft: #e2f0e6;
+    --bad: #a34a26;
+    --bad-soft: #f5e6dd;
+    --code-bg: #1c1b26;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a;
+    --panel: #1e1d24;
+    --ink: #eae8e2;
+    --ink-dim: #a5a196;
+    --rule: #34323c;
+    --accent: #8fa3ff;
+    --accent-ink: #12131f;
+    --accent-soft: #23264a;
+    --good: #7fd9a4;
+    --good-soft: #1c3327;
+    --bad: #e8a685;
+    --bad-soft: #3a2620;
+    --code-bg: #0e0d13;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a;
+      --panel: #1e1d24;
+      --ink: #eae8e2;
+      --ink-dim: #a5a196;
+      --rule: #34323c;
+      --accent: #8fa3ff;
+      --accent-ink: #12131f;
+      --accent-soft: #23264a;
+      --good: #7fd9a4;
+      --good-soft: #1c3327;
+      --bad: #e8a685;
+      --bad-soft: #3a2620;
+      --code-bg: #0e0d13;
+      --code-ink: #e8e6f0;
+      --code-accent: #8fa3ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+  }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 1.6rem;
+    height: 1px;
+    background: var(--accent);
+  }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 2.3rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; }
+  h2 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2.6rem 0 0.9rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin: 1.4rem 0 0.5rem;
+  }
+  p { margin: 0.7rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.6rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; max-width: 62ch; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+  .tree { color: var(--code-accent); }
+
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card {
+    border-radius: 10px;
+    padding: 1.1rem 1.2rem;
+    border: 1px solid var(--rule);
+  }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+  .card ul { padding-left: 1.1rem; }
+
+  .roadmap {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+    counter-reset: batch;
+    border-left: 2px solid var(--rule);
+  }
+  .roadmap li {
+    counter-increment: batch;
+    position: relative;
+    padding: 0 0 1.3rem 1.3rem;
+    max-width: none;
+  }
+  .roadmap li::before {
+    content: counter(batch);
+    position: absolute;
+    left: -0.72rem;
+    top: 0;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 0.72rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: ui-monospace, monospace;
+  }
+  .roadmap strong { display: block; font-size: 0.98rem; }
+  .roadmap span { color: var(--ink-dim); font-size: 0.92rem; }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt {
+    font-weight: 700;
+    font-family: ui-monospace, "SF Mono", monospace;
+    color: var(--accent);
+    margin-top: 0.9rem;
+  }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 0 · Laboratorio #1 — MLP</div>
+  <h1>Andamiaje del repositorio</h1>
+  <p class="subtitle">
+    Antes de tocar una sola línea de PyTorch, se organiza el repositorio del curso y se
+    prepara el entorno de ejecución. Este documento explica qué se construyó, por qué,
+    y qué conceptos hay detrás.
+  </p>
+
+  <h2>Qué se hizo</h2>
+  <p>Se creó la estructura de carpetas del curso completo (no solo de este laboratorio),
+  un entorno virtual de Python aislado con las dependencias exactas que pide el
+  enunciado, y el esqueleto del notebook con los encabezados de cada sección del PDF.</p>
+
+  <pre><code>deepLearning/
+├── README.md                 <span class="tree"># mapa del repo + setup</span>
+├── requirements.txt           <span class="tree"># torch, jupyter, pandas, numpy, matplotlib, scikit-learn</span>
+├── .venv/                     <span class="tree"># entorno aislado (no se versiona)</span>
+├── labs/
+│   └── lab1-mlp/
+│       ├── lab1_mlp.ipynb    <span class="tree"># el entregable</span>
+│       ├── data/              <span class="tree"># housing.csv (no se versiona)</span>
+│       └── docs/              <span class="tree"># estos explicadores HTML</span>
+├── hdt/                       <span class="tree"># hojas de trabajo futuras</span>
+└── projects/                  <span class="tree"># proyectos futuros</span></code></pre>
+
+  <h2>Por qué así</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros</h3>
+      <ul>
+        <li>Entorno virtual evita que <code>torch</code> choque con otras versiones instaladas en el sistema.</li>
+        <li>Separar <code>labs/</code>, <code>hdt/</code> y <code>projects/</code> deja espacio para el resto del curso sin reorganizar después.</li>
+        <li>El notebook se genera y ejecuta programáticamente (<code>nbformat</code> + <code>nbconvert</code>), así que cada entrega en el repo ya tiene las salidas (gráficas, tablas) horneadas — no depende de que alguien le dé "Run All" manualmente.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Contras / límites</h3>
+      <ul>
+        <li>Un entorno virtual por proyecto es más pesado en disco que uno global (~1–2 GB con <code>torch</code> CPU).</li>
+        <li><code>data/</code> queda fuera de git: quien clone el repo debe volver a descargar <code>housing.csv</code>.</li>
+        <li>La estructura para <code>hdt/</code> y <code>projects/</code> es especulativa — se ajustará cuando exista contenido real.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Impedimentos encontrados</h2>
+  <p>El sistema no tenía <code>torch</code> ni <code>jupyter</code> instalados (sí tenía
+  <code>pandas</code>/<code>numpy</code>/<code>matplotlib</code>/<code>scikit-learn</code>).
+  Se resolvió creando <code>.venv</code> e instalando <code>requirements.txt</code> dentro
+  de él — sin tocar el Python del sistema.</p>
+  <div class="callout">
+    Verificado: <code>python -c "import torch; print(torch.__version__)"</code> dentro del
+    venv reporta <code>torch 2.13.0</code> y el notebook esqueleto se ejecutó de punta a
+    punta sin errores vía <code>jupyter nbconvert --execute</code>.
+  </div>
+
+  <h2>Ruta de los siguientes batches</h2>
+  <ol class="roadmap">
+    <li><strong>Datos</strong><span>Carga de California Housing, EDA (nulos, outliers, categóricas), split train/val/test sin fuga hacia test.</span></li>
+    <li><strong>Investigación</strong><span>Capas de <code>torch.nn</code>, funciones de pérdida y optimizadores — con demos ejecutables.</span></li>
+    <li><strong>Modelo</strong><span>Clase MLP parametrizable + ciclo de entrenamiento genérico + métricas de regresión.</span></li>
+    <li><strong>10+ iteraciones</strong><span>Búsqueda sistemática de hiperparámetros, curvas de pérdida, tabla resumen.</span></li>
+    <li><strong>Cierre</strong><span>Evaluación única sobre test, discusión de resultados, reporte PDF.</span></li>
+  </ol>
+
+  <h2>Glosario básico</h2>
+  <dl class="glossary">
+    <dt>MLP (Multilayer Perceptron)</dt>
+    <dd>Red neuronal formada por capas totalmente conectadas ("densas") apiladas, cada una seguida de una función de activación no lineal. Es la arquitectura base para regresión y clasificación tabular.</dd>
+
+    <dt>Entorno virtual (venv)</dt>
+    <dd>Copia aislada del intérprete de Python con su propio conjunto de paquetes, para que las dependencias de un proyecto no interfieran con las de otro.</dd>
+
+    <dt>Jupyter Notebook (.ipynb)</dt>
+    <dd>Documento ejecutable que mezcla celdas de código (Python) y celdas de texto (Markdown), con las salidas (tablas, gráficas) guardadas junto al código.</dd>
+
+    <dt>nbconvert --execute</dt>
+    <dd>Herramienta de línea de comandos que ejecuta un notebook de principio a fin y guarda las salidas resultantes, usada aquí para asegurar que cada batch entregado ya corrió sin errores.</dd>
+  </dl>
+
+  <footer>
+    <span>Laboratorio #1 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 0 de 6</span>
+  </footer>
+</div>
