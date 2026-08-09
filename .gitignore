@@ -4,4 +4,6 @@ __pycache__/
 .ipynb_checkpoints/
 labs/lab1-mlp/data/*
 !labs/lab1-mlp/data/.gitkeep
+labs/lab2-CNN/data/*
+!labs/lab2-CNN/data/.gitkeep
 .DS_Store

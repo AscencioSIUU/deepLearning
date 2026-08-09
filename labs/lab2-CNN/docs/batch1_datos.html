@@ -1,0 +1,268 @@
+<title>Batch 1 — Datos y preparación</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --panel: #ece8dd;
+    --ink: #201f1c;
+    --ink-dim: #59564c;
+    --rule: #d8d3c4;
+    --accent: #3949ab;
+    --accent-ink: #ffffff;
+    --accent-soft: #e4e6f7;
+    --good: #2f7a4f;
+    --good-soft: #e2f0e6;
+    --bad: #a34a26;
+    --bad-soft: #f5e6dd;
+    --warn: #9a7b1f;
+    --warn-soft: #f5edd8;
+    --code-bg: #1c1b26;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a;
+    --panel: #1e1d24;
+    --ink: #eae8e2;
+    --ink-dim: #a5a196;
+    --rule: #34323c;
+    --accent: #8fa3ff;
+    --accent-ink: #12131f;
+    --accent-soft: #23264a;
+    --good: #7fd9a4;
+    --good-soft: #1c3327;
+    --bad: #e8a685;
+    --bad-soft: #3a2620;
+    --warn: #e8ca7f;
+    --warn-soft: #3a3220;
+    --code-bg: #0e0d13;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a;
+      --panel: #1e1d24;
+      --ink: #eae8e2;
+      --ink-dim: #a5a196;
+      --rule: #34323c;
+      --accent: #8fa3ff;
+      --accent-ink: #12131f;
+      --accent-soft: #23264a;
+      --good: #7fd9a4;
+      --good-soft: #1c3327;
+      --bad: #e8a685;
+      --bad-soft: #3a2620;
+      --warn: #e8ca7f;
+      --warn-soft: #3a3220;
+      --code-bg: #0e0d13;
+      --code-ink: #e8e6f0;
+      --code-accent: #8fa3ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: var(--accent); }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 2.3rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; }
+  h2 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2.6rem 0 0.9rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.5rem; }
+  p { margin: 0.7rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.6rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; max-width: 62ch; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { border-radius: 10px; padding: 1.1rem 1.2rem; border: 1px solid var(--rule); }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+  .card ul { padding-left: 1.1rem; }
+
+  .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  thead th { background: var(--panel); font-family: ui-monospace, monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt { font-weight: 700; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); margin-top: 0.9rem; }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 1 · Laboratorio #2 — CNN</div>
+  <h1>Datos y preparación</h1>
+  <p class="subtitle">
+    MNIST: 70,000 dígitos manuscritos, 28×28 en escala de grises. La exploración es rápida
+    porque el dataset ya viene limpio — el trabajo real es dejar el test set intocable.
+  </p>
+
+  <h2>Qué se hizo</h2>
+  <p>Se descargó MNIST vía <code>torchvision.datasets.MNIST</code> (60,000 train / 10,000
+  test), se respondieron las 4 preguntas de exploración del enunciado, se visualizaron 10
+  ejemplos etiquetados y se dividió el train set en train/val (90/10) dejando el test set
+  sin tocar hasta la evaluación final.</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Propiedad</th><th>Valor</th></tr></thead>
+      <tbody>
+        <tr><td>Imágenes de entrenamiento</td><td class="num">60,000</td></tr>
+        <tr><td>Imágenes de test</td><td class="num">10,000</td></tr>
+        <tr><td>Clases</td><td class="num">10 (dígitos 0–9)</td></tr>
+        <tr><td>Dimensión de cada imagen</td><td class="num">1×28×28 (escala de grises)</td></tr>
+        <tr><td>Rango de píxeles (crudo)</td><td class="num">uint8 [0, 255]</td></tr>
+        <tr><td>Balance de clases</td><td class="num">~9.9k–10.7k por clase, sin dominante</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Decisiones y por qué</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros del enfoque</h3>
+      <ul>
+        <li>Normalización con la media/desviación estándar conocidas de MNIST
+        (0.1307 / 0.3081) en vez de recalcularlas — valores estándar, reproducibles y
+        ya validados por la comunidad para este dataset exacto.</li>
+        <li>Split 90/10 sobre train deja 6,000 imágenes de validación — suficiente
+        volumen para que accuracy/F1 de validación no sean ruidosas entre iteraciones.</li>
+        <li><code>test_ds</code> se construye pero no se usa hasta la sección 5: cero
+        posibilidad de fuga de información durante la búsqueda de hiperparámetros.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Contras / límites</h3>
+      <ul>
+        <li>No se aplicó data augmentation (rotaciones, traslaciones) en esta etapa —
+        MNIST es lo bastante fácil que el enunciado no lo exige; candidato a mejora futura.</li>
+        <li>El split 90/10 es fijo (no k-fold): con presupuesto de tiempo por iteración,
+        una validación holdout simple es suficiente y más rápida de iterar.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Investigación detallada: por qué normalizar antes de la CNN/MLP</h2>
+  <p>Igual que en el Lab #1, el descenso de gradiente converge mejor con entradas centradas
+  cerca de 0 y de escala comparable. MNIST ya tiene todos los píxeles en la misma unidad
+  (intensidad de gris), así que la normalización aquí no resuelve un problema de escalas
+  dispares entre features (como en housing) sino que centra la distribución: de
+  [0, 1] tras <code>ToTensor()</code> a media ≈0, varianza ≈1 tras <code>Normalize</code>,
+  lo que evita que la activación inicial de las primeras capas esté sesgada hacia valores
+  positivos (la mayoría de píxeles en MNIST son fondo negro = 0).</p>
+
+  <h2>Impedimentos encontrados</h2>
+  <p>El entorno virtual del repo (<code>../.venv</code>) tenía <code>torch</code> pero no
+  <code>torchvision</code>. Se instaló con <code>pip install torchvision</code> — quedó
+  fijado en <code>requirements.txt</code> del repo para reproducibilidad.</p>
+
+  <h2>Qué más se podría hacer</h2>
+  <ul>
+    <li><strong>Data augmentation</strong> (rotación ligera, traslación) para la CNN en
+    iteraciones posteriores, si se busca exprimir el último punto de accuracy.</li>
+    <li><strong>K-fold cross-validation</strong> en vez de un split holdout único, si el
+    presupuesto de tiempo lo permitiera — no es necesario aquí por el tamaño de val (6k).</li>
+  </ul>
+
+  <h2>Glosario</h2>
+  <dl class="glossary">
+    <dt>Tensor</dt>
+    <dd>Arreglo multidimensional (generalización de escalar/vector/matriz) que PyTorch usa
+    para representar datos y parámetros, con soporte para autograd y ejecución en GPU/MPS.</dd>
+
+    <dt>ToTensor()</dt>
+    <dd>Transform de <code>torchvision</code> que convierte una imagen PIL (<code>uint8</code>,
+    [0,255]) a un tensor <code>float32</code> en [0,1], reordenando a formato
+    canal-primero (C×H×W).</dd>
+
+    <dt>Normalize(mean, std)</dt>
+    <dd>Transform que resta la media y divide entre la desviación estándar por canal,
+    dejando la entrada centrada en 0 con varianza ≈1.</dd>
+
+    <dt>Fuga de datos (data leakage)</dt>
+    <dd>Cuando información del test set influye, directa o indirectamente, en decisiones de
+    entrenamiento o hiperparámetros. Por eso <code>test_ds</code> se aísla desde este batch.</dd>
+  </dl>
+
+  <footer>
+    <span>Laboratorio #2 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 1 de 6</span>
+  </footer>
+</div>
