@@ -246,6 +246,133 @@ también actúa como regularización estructural: la misma detección de bordes/
 es válida en cualquier posición de la imagen.
 """)
 
+# ---------------------------------------------------------------- 4. Modelos y entrenamiento
+md("## 4. Construcción y entrenamiento de las arquitecturas")
+md("### Definición de los modelos")
+code("""
+class MLP(nn.Module):
+    def __init__(self, hidden_sizes=(128, 64), activation=nn.ReLU, dropout=0.0):
+        super().__init__()
+        layers = [nn.Flatten()]
+        in_dim = 28 * 28
+        for h in hidden_sizes:
+            layers += [nn.Linear(in_dim, h), activation()]
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            in_dim = h
+        layers.append(nn.Linear(in_dim, 10))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class CNN(nn.Module):
+    def __init__(self, conv_channels=(16, 32), fc_hidden=64, activation=nn.ReLU,
+                 dropout=0.0, use_batchnorm=True, pool="max"):
+        super().__init__()
+        Pool = nn.MaxPool2d if pool == "max" else nn.AvgPool2d
+        conv_layers = []
+        in_ch = 1
+        for out_ch in conv_channels:
+            conv_layers.append(nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1))
+            if use_batchnorm:
+                conv_layers.append(nn.BatchNorm2d(out_ch))
+            conv_layers += [activation(), Pool(kernel_size=2)]
+            in_ch = out_ch
+        self.conv = nn.Sequential(*conv_layers)
+
+        spatial = 28 // (2 ** len(conv_channels))
+        flat_dim = in_ch * spatial * spatial
+        fc_layers = [nn.Flatten(), nn.Linear(flat_dim, fc_hidden), activation()]
+        if dropout > 0:
+            fc_layers.append(nn.Dropout(dropout))
+        fc_layers.append(nn.Linear(fc_hidden, 10))
+        self.fc = nn.Sequential(*fc_layers)
+
+    def forward(self, x):
+        return self.fc(self.conv(x))
+
+
+def count_params(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+""")
+
+md("### Datasets y DataLoaders")
+code("""
+def make_loaders(batch_size):
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+    return train_loader, val_loader, test_loader
+""")
+
+md("### Ciclo de entrenamiento genérico")
+code("""
+def run_epoch(model, loader, criterion, optimizer=None):
+    is_train = optimizer is not None
+    model.train() if is_train else model.eval()
+    total_loss, all_preds, all_labels = 0.0, [], []
+    with torch.set_grad_enabled(is_train):
+        for xb, yb in loader:
+            xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+            logits = model(xb)
+            loss = criterion(logits, yb)
+            if is_train:
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+            total_loss += loss.item() * xb.size(0)
+            all_preds.append(logits.argmax(dim=1).cpu())
+            all_labels.append(yb.cpu())
+    avg_loss = total_loss / len(loader.dataset)
+    preds = torch.cat(all_preds).numpy()
+    labels = torch.cat(all_labels).numpy()
+    return avg_loss, preds, labels
+
+
+def train_model(model, train_loader, val_loader, optimizer, epochs):
+    model.to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    history = {"train_loss": [], "val_loss": []}
+    for epoch in range(epochs):
+        train_loss, _, _ = run_epoch(model, train_loader, criterion, optimizer)
+        val_loss, _, _ = run_epoch(model, val_loader, criterion, optimizer=None)
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+    return history
+""")
+
+md("### Métricas de evaluación")
+code("""
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+
+def evaluate_metrics(model, loader):
+    criterion = nn.CrossEntropyLoss()
+    loss, preds, labels = run_epoch(model, loader, criterion, optimizer=None)
+    acc = accuracy_score(labels, preds)
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        labels, preds, average="macro", zero_division=0
+    )
+    return {"loss": loss, "accuracy": acc, "precision": precision, "recall": recall, "f1": f1}
+""")
+
+md("### Prueba de humo (smoke test)")
+code("""
+torch.manual_seed(SEED)
+smoke_train, smoke_val, _ = make_loaders(batch_size=64)
+
+mlp_smoke = MLP()
+cnn_smoke = CNN()
+print("MLP params:", count_params(mlp_smoke), "| CNN params:", count_params(cnn_smoke))
+
+for name, m in [("MLP", mlp_smoke), ("CNN", cnn_smoke)]:
+    opt = torch.optim.Adam(m.parameters(), lr=1e-3)
+    hist = train_model(m, smoke_train, smoke_val, opt, epochs=1)
+    assert hist["train_loss"][0] < np.log(10) * 1.5, f"{name}: loss inicial fuera de rango esperado"
+    print(f"{name} smoke test OK -> train_loss={hist['train_loss'][0]:.3f} val_loss={hist['val_loss'][0]:.3f}")
+""")
+
 nb["cells"] = cells
 with open("lab2_cnn.ipynb", "w") as f:
     nbf.write(nb, f)
