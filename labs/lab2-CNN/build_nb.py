@@ -132,6 +132,120 @@ md("""
 arquitectura ni de hiperparámetros; solo se evalúa una vez en la sección 5.
 """)
 
+# ---------------------------------------------------------------- 3. Investigación de capas
+md("## 3. Investigación: capas de PyTorch para la CNN")
+md("""
+### `nn.Conv2d`
+Aplica convolución 2D: desliza `out_channels` kernels de tamaño `kernel_size` sobre la
+entrada, cada uno compartiendo sus pesos en toda la imagen (weight sharing). Parámetros
+clave: `in_channels`, `out_channels`, `kernel_size`, `stride` (paso del kernel),
+`padding` (relleno de borde para controlar el tamaño de salida). A diferencia de
+`nn.Linear`, no conecta cada píxel con cada neurona: solo mira una ventana local
+(campo receptivo), lo que preserva la estructura espacial 2D de la imagen.
+""")
+code("""
+conv = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, padding=1)
+x = torch.randn(4, 1, 28, 28)  # batch de 4 imágenes MNIST
+out = conv(x)
+print("Entrada:", x.shape, "-> Salida:", out.shape)
+print("Parámetros entrenables:", sum(p.numel() for p in conv.parameters()))
+""")
+
+md("""
+### `nn.MaxPool2d`
+Reduce la resolución espacial tomando el valor máximo dentro de cada ventana
+(`kernel_size`, con `stride` por defecto igual al kernel). No tiene parámetros
+entrenables; resume la activación más fuerte de cada región, aportando invarianza a
+pequeñas traslaciones y reduciendo el costo computacional de las capas siguientes.
+""")
+code("""
+pool = nn.MaxPool2d(kernel_size=2)
+out_pool = pool(out)
+print("Entrada:", out.shape, "-> Salida:", out_pool.shape)
+""")
+
+md("""
+### `nn.AvgPool2d`
+Igual que `MaxPool2d` pero promedia en vez de tomar el máximo dentro de cada ventana.
+Suaviza la activación en vez de quedarse con el pico; útil cuando interesa la
+intensidad promedio de una región y no solo su activación más fuerte (p. ej. como
+pooling final antes de una capa totalmente conectada, en vez de aplanar todo el mapa).
+""")
+code("""
+avgpool = nn.AvgPool2d(kernel_size=2)
+out_avg = avgpool(out)
+print("Entrada:", out.shape, "-> Salida:", out_avg.shape)
+""")
+
+md("""
+### `nn.BatchNorm2d`
+Normaliza las activaciones de cada canal usando la media/varianza del mini-batch
+actual, luego aplica un reescalado y desplazamiento aprendibles (`γ`, `β`). Parámetro
+principal: `num_features` (= número de canales de entrada, debe igualar
+`out_channels` de la capa conv anterior). Estabiliza y acelera el entrenamiento al
+evitar que la distribución de activaciones se desplace demasiado entre capas
+(internal covariate shift).
+""")
+code("""
+bn = nn.BatchNorm2d(num_features=8)
+out_bn = bn(out)
+print("Shape:", out_bn.shape, "| media por canal ~0:", out_bn.mean(dim=(0,2,3)).detach().numpy().round(3))
+""")
+
+md("""
+### `nn.Flatten`
+Convierte un tensor multidimensional (p. ej. `[batch, C, H, W]`) en un vector 2D
+`[batch, C*H*W]`, necesario para conectar la salida de las capas convolucionales con
+capas `nn.Linear`. Parámetro `start_dim` (por defecto 1) controla desde qué eje se
+aplana, preservando la dimensión de batch.
+""")
+code("""
+flatten = nn.Flatten()
+out_flat = flatten(out_pool)
+print("Entrada:", out_pool.shape, "-> Salida:", out_flat.shape)
+""")
+
+md("""
+### `nn.CrossEntropyLoss`
+Pérdida estándar para clasificación multiclase. Combina internamente `log_softmax` +
+`NLLLoss`: espera **logits crudos** (sin softmax aplicado) de forma `[batch, n_clases]`
+y las etiquetas como enteros de clase `[batch]` (no one-hot). Parámetro relevante:
+`weight` (para ponderar clases desbalanceadas, no necesario aquí dado el balance visto
+en Batch 1).
+""")
+code("""
+criterion = nn.CrossEntropyLoss()
+logits_demo = torch.randn(4, 10)          # 4 ejemplos, 10 clases (logits crudos)
+labels_demo = torch.tensor([0, 3, 7, 1])  # etiquetas como enteros, no one-hot
+loss_demo = criterion(logits_demo, labels_demo)
+print("Loss:", loss_demo.item())
+""")
+
+md("""
+### Tensor en PyTorch
+Un tensor es un arreglo multidimensional (escalar, vector, matriz o de mayor orden)
+que además de guardar datos numéricos rastrea las operaciones aplicadas sobre él
+(autograd) para poder calcular gradientes automáticamente, y puede ejecutarse en
+CPU, GPU (CUDA) o MPS de forma transparente.
+
+### Campo receptivo (receptive field)
+Es la región de la imagen de entrada que influye en el valor de una unidad de
+activación dada, en cierta capa. En la primera capa conv es del tamaño del kernel
+(p. ej. 3×3); al apilar capas conv/pool, el campo receptivo de las capas profundas
+crece y termina cubriendo regiones mucho más grandes de la imagen original —
+así la red combina información local en patrones cada vez más globales.
+
+### ¿Por qué la CNN requiere menos parámetros que un MLP equivalente?
+Una capa `nn.Linear` conecta **cada** píxel de entrada con **cada** neurona de salida:
+para una imagen 28×28 y 128 neuronas ocultas, eso son `28*28*128 ≈ 100k` pesos solo en
+la primera capa. Una capa `nn.Conv2d` reutiliza el **mismo** kernel pequeño (p. ej.
+3×3) en toda la imagen (weight sharing) y cada salida solo depende de una ventana
+local (conectividad local) — un `Conv2d(1, 8, kernel_size=3)` tiene apenas
+`8*(1*3*3+1) = 80` parámetros sin importar el tamaño de la imagen. Esa reutilización
+también actúa como regularización estructural: la misma detección de bordes/texturas
+es válida en cualquier posición de la imagen.
+""")
+
 nb["cells"] = cells
 with open("lab2_cnn.ipynb", "w") as f:
     nbf.write(nb, f)

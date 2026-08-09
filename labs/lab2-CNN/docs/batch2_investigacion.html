@@ -1,0 +1,276 @@
+<title>Batch 2 — Investigación de capas PyTorch</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --panel: #ece8dd;
+    --ink: #201f1c;
+    --ink-dim: #59564c;
+    --rule: #d8d3c4;
+    --accent: #3949ab;
+    --accent-ink: #ffffff;
+    --accent-soft: #e4e6f7;
+    --good: #2f7a4f;
+    --good-soft: #e2f0e6;
+    --bad: #a34a26;
+    --bad-soft: #f5e6dd;
+    --warn: #9a7b1f;
+    --warn-soft: #f5edd8;
+    --code-bg: #1c1b26;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a;
+    --panel: #1e1d24;
+    --ink: #eae8e2;
+    --ink-dim: #a5a196;
+    --rule: #34323c;
+    --accent: #8fa3ff;
+    --accent-ink: #12131f;
+    --accent-soft: #23264a;
+    --good: #7fd9a4;
+    --good-soft: #1c3327;
+    --bad: #e8a685;
+    --bad-soft: #3a2620;
+    --warn: #e8ca7f;
+    --warn-soft: #3a3220;
+    --code-bg: #0e0d13;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a;
+      --panel: #1e1d24;
+      --ink: #eae8e2;
+      --ink-dim: #a5a196;
+      --rule: #34323c;
+      --accent: #8fa3ff;
+      --accent-ink: #12131f;
+      --accent-soft: #23264a;
+      --good: #7fd9a4;
+      --good-soft: #1c3327;
+      --bad: #e8a685;
+      --bad-soft: #3a2620;
+      --warn: #e8ca7f;
+      --warn-soft: #3a3220;
+      --code-bg: #0e0d13;
+      --code-ink: #e8e6f0;
+      --code-accent: #8fa3ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: var(--accent); }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 2.3rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; }
+  h2 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2.6rem 0 0.9rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.5rem; }
+  p { margin: 0.7rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.6rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; max-width: 62ch; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { border-radius: 10px; padding: 1.1rem 1.2rem; border: 1px solid var(--rule); }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+  .card ul { padding-left: 1.1rem; }
+
+  .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  thead th { background: var(--panel); font-family: ui-monospace, monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt { font-weight: 700; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); margin-top: 0.9rem; }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 2 · Laboratorio #2 — CNN</div>
+  <h1>Investigación de capas PyTorch</h1>
+  <p class="subtitle">
+    Las piezas de <code>torch.nn</code> que separan una CNN de un MLP: convolución,
+    pooling, normalización por lotes, y por qué compartir pesos ahorra parámetros.
+  </p>
+
+  <h2>Qué se hizo</h2>
+  <p>Se investigaron las 6 capas pedidas por el enunciado (<code>Conv2d</code>,
+  <code>MaxPool2d</code>, <code>AvgPool2d</code>, <code>BatchNorm2d</code>,
+  <code>Flatten</code>, <code>CrossEntropyLoss</code>) con demos ejecutables de
+  shape de entrada/salida, y se documentaron los conceptos de tensor, campo
+  receptivo y ahorro de parámetros de una CNN frente a un MLP equivalente.</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Capa</th><th>Propósito</th><th>Parámetros clave</th></tr></thead>
+      <tbody>
+        <tr><td><code>nn.Conv2d</code></td><td>Convolución con pesos compartidos</td><td><code>in/out_channels</code>, <code>kernel_size</code>, <code>stride</code>, <code>padding</code></td></tr>
+        <tr><td><code>nn.MaxPool2d</code></td><td>Downsampling por máximo (sin pesos)</td><td><code>kernel_size</code></td></tr>
+        <tr><td><code>nn.AvgPool2d</code></td><td>Downsampling por promedio (sin pesos)</td><td><code>kernel_size</code></td></tr>
+        <tr><td><code>nn.BatchNorm2d</code></td><td>Normaliza activaciones por canal/batch</td><td><code>num_features</code></td></tr>
+        <tr><td><code>nn.Flatten</code></td><td>Aplana mapas 2D a vector para capas Linear</td><td><code>start_dim</code></td></tr>
+        <tr><td><code>nn.CrossEntropyLoss</code></td><td>Pérdida de clasificación multiclase</td><td>espera logits crudos + etiquetas enteras</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <strong>Trampa común:</strong> <code>nn.CrossEntropyLoss</code> ya aplica
+    <code>log_softmax</code> internamente. Pasarle probabilidades ya softmaxeadas (en
+    vez de logits crudos) produce una pérdida incorrecta — es el error más frecuente
+    al portar un modelo de MSE (Lab #1) a clasificación.
+  </div>
+
+  <h2>Decisiones y por qué</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros del enfoque</h3>
+      <ul>
+        <li>Cada demo usa tensores mínimos (batch de 4, MNIST 1×28×28) e imprime
+        shapes de entrada/salida — verificable en segundos sin depender del dataset
+        completo ni de un modelo entrenado.</li>
+        <li>El demo de <code>Conv2d</code> imprime el conteo de parámetros
+        directamente, dejando el argumento de "menos parámetros que un MLP" como
+        número concreto y no solo como afirmación teórica.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Contras / límites</h3>
+      <ul>
+        <li>No se investigó <code>stride</code> distinto de 1 ni convoluciones
+        dilatadas — fuera del mínimo pedido por el enunciado; los modelos de la
+        sección 4 usan valores por defecto salvo que una iteración lo justifique.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Investigación detallada: por qué la CNN necesita menos parámetros</h2>
+  <p>Una capa <code>nn.Linear(784, 128)</code> (MLP sobre MNIST aplanado) tiene
+  <code>784*128 + 128 ≈ 100,480</code> parámetros — cada una de las 128 neuronas
+  ocultas mira los 784 píxeles de forma independiente. Una capa
+  <code>nn.Conv2d(1, 8, kernel_size=3)</code> tiene solo <code>8*(1*9+1) = 80</code>
+  parámetros: el mismo kernel de 3×3 se reutiliza (weight sharing) en cada posición de
+  la imagen, y cada salida solo depende de una ventana local de 3×3 píxeles
+  (conectividad local, campo receptivo pequeño en la primera capa). Esa reutilización
+  no es solo ahorro de memoria: es una suposición correcta sobre imágenes (un borde se
+  ve igual sin importar en qué esquina aparezca), que actúa como regularización
+  estructural y por eso las CNN generalizan mejor con menos datos.</p>
+
+  <h2>Impedimentos encontrados</h2>
+  <p>Ninguno — todas las capas están disponibles en la versión instalada de
+  <code>torch</code> (2.13.0) sin cambios de API respecto a la documentación oficial.</p>
+
+  <h2>Qué más se podría hacer</h2>
+  <ul>
+    <li><strong>Visualizar los kernels aprendidos</strong> de la primera capa conv
+    tras entrenar (Batch 3+), para ver qué patrones (bordes, curvas) detecta cada filtro.</li>
+    <li><strong>Comparar <code>MaxPool2d</code> vs. <code>AvgPool2d</code></strong>
+    empíricamente como una variable más de la búsqueda de hiperparámetros del Batch 4.</li>
+  </ul>
+
+  <h2>Glosario</h2>
+  <dl class="glossary">
+    <dt>Weight sharing</dt>
+    <dd>Reutilizar el mismo conjunto de pesos (kernel) en múltiples posiciones de la
+    entrada, en vez de aprender un peso distinto por posición como hace <code>Linear</code>.</dd>
+
+    <dt>Campo receptivo (receptive field)</dt>
+    <dd>Región de la imagen de entrada que influye en el valor de una activación dada;
+    crece al apilar capas conv/pool.</dd>
+
+    <dt>Internal covariate shift</dt>
+    <dd>Cambio en la distribución de activaciones de una capa a medida que cambian los
+    pesos de las capas anteriores durante el entrenamiento; <code>BatchNorm</code>
+    lo mitiga normalizando por mini-batch.</dd>
+
+    <dt>Logits</dt>
+    <dd>Salida cruda (sin softmax) de la última capa de una red de clasificación;
+    <code>CrossEntropyLoss</code> espera recibir logits, no probabilidades.</dd>
+  </dl>
+
+  <footer>
+    <span>Laboratorio #2 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 2 de 6</span>
+  </footer>
+</div>
