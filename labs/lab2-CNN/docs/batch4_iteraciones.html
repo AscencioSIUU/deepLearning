@@ -1,0 +1,284 @@
+<title>Batch 4 — Iteración de hiperparámetros</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --panel: #ece8dd;
+    --ink: #201f1c;
+    --ink-dim: #59564c;
+    --rule: #d8d3c4;
+    --accent: #3949ab;
+    --accent-ink: #ffffff;
+    --accent-soft: #e4e6f7;
+    --good: #2f7a4f;
+    --good-soft: #e2f0e6;
+    --bad: #a34a26;
+    --bad-soft: #f5e6dd;
+    --warn: #9a7b1f;
+    --warn-soft: #f5edd8;
+    --code-bg: #1c1b26;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a;
+    --panel: #1e1d24;
+    --ink: #eae8e2;
+    --ink-dim: #a5a196;
+    --rule: #34323c;
+    --accent: #8fa3ff;
+    --accent-ink: #12131f;
+    --accent-soft: #23264a;
+    --good: #7fd9a4;
+    --good-soft: #1c3327;
+    --bad: #e8a685;
+    --bad-soft: #3a2620;
+    --warn: #e8ca7f;
+    --warn-soft: #3a3220;
+    --code-bg: #0e0d13;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a;
+      --panel: #1e1d24;
+      --ink: #eae8e2;
+      --ink-dim: #a5a196;
+      --rule: #34323c;
+      --accent: #8fa3ff;
+      --accent-ink: #12131f;
+      --accent-soft: #23264a;
+      --good: #7fd9a4;
+      --good-soft: #1c3327;
+      --bad: #e8a685;
+      --bad-soft: #3a2620;
+      --warn: #e8ca7f;
+      --warn-soft: #3a3220;
+      --code-bg: #0e0d13;
+      --code-ink: #e8e6f0;
+      --code-accent: #8fa3ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: var(--accent); }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 2.3rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; }
+  h2 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2.6rem 0 0.9rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.5rem; }
+  p { margin: 0.7rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.6rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; max-width: 62ch; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { border-radius: 10px; padding: 1.1rem 1.2rem; border: 1px solid var(--rule); }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+  .card ul { padding-left: 1.1rem; }
+
+  .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  thead th { background: var(--panel); font-family: ui-monospace, monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt { font-weight: 700; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); margin-top: 0.9rem; }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 4 · Laboratorio #2 — CNN</div>
+  <h1>Iteración de hiperparámetros</h1>
+  <p class="subtitle">
+    12 configuraciones (6 MLP + 6 CNN), cada una cambiando 1-2 variables respecto a su
+    baseline, para poder atribuir el efecto de cada cambio antes de elegir el modelo final.
+  </p>
+
+  <h2>Qué se hizo</h2>
+  <p>Se corrieron 6 configuraciones de MLP y 6 de CNN (6 épocas cada una, mismo seed),
+  registrando por corrida: hiperparámetros, loss de train/val por época, accuracy/
+  precision/recall/F1 (macro) en validación, parámetros entrenables y tiempo de
+  entrenamiento. Se graficaron las curvas train-vs-val de 6 configuraciones
+  representativas (3 por arquitectura) y se seleccionó la mejor configuración de cada
+  arquitectura según <code>val_accuracy</code>.</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>ID</th><th>Descripción</th><th>Params</th><th>Val acc</th><th>Val loss</th><th>Tiempo</th></tr></thead>
+      <tbody>
+        <tr><td>M1 baseline</td><td>[128,64], ReLU, Adam/1e-3</td><td class="num">109,386</td><td class="num">0.9732</td><td class="num">0.0998</td><td class="num">46.0s</td></tr>
+        <tr><td>M2 wider</td><td>[256,128], ReLU, Adam/1e-3</td><td class="num">235,146</td><td class="num">0.9727</td><td class="num">0.0921</td><td class="num">35.1s</td></tr>
+        <tr><td>M3 LeakyReLU</td><td>[128,64], LeakyReLU</td><td class="num">109,386</td><td class="num">0.9708</td><td class="num">0.1057</td><td class="num">33.7s</td></tr>
+        <tr><td>M4 lr alto</td><td>Adam/1e-2</td><td class="num">109,386</td><td class="num">0.9542</td><td class="num">0.2297</td><td class="num">34.5s</td></tr>
+        <tr><td>M5 dropout</td><td>dropout=0.3</td><td class="num">109,386</td><td class="num">0.9667</td><td class="num">0.1138</td><td class="num">34.9s</td></tr>
+        <tr><td>M6 batch grande</td><td>batch=256</td><td class="num">109,386</td><td class="num">0.9683</td><td class="num">0.1055</td><td class="num">20.9s</td></tr>
+        <tr><td><strong>C1 baseline</strong></td><td>conv=[16,32], BN, MaxPool</td><td class="num">105,962</td><td class="num">0.9875</td><td class="num">0.0430</td><td class="num">74.0s</td></tr>
+        <tr><td>C2 mas canales</td><td>conv=[32,64]</td><td class="num">220,426</td><td class="num">0.9873</td><td class="num">0.0484</td><td class="num">74.9s</td></tr>
+        <tr><td><strong>C3 sin BatchNorm</strong></td><td>sin BN</td><td class="num">105,866</td><td class="num">0.9880</td><td class="num">0.0420</td><td class="num">71.4s</td></tr>
+        <tr><td>C4 AvgPool</td><td>pool=avg</td><td class="num">105,962</td><td class="num">0.9875</td><td class="num">0.0454</td><td class="num">73.4s</td></tr>
+        <tr><td>C5 dropout</td><td>dropout=0.3</td><td class="num">105,962</td><td class="num">0.9877</td><td class="num">0.0435</td><td class="num">74.2s</td></tr>
+        <tr><td><strong>C6 weight_decay</strong></td><td>L2=1e-4</td><td class="num">105,962</td><td class="num">0.9883</td><td class="num">0.0404</td><td class="num">72.3s</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>Mejor por arquitectura (val_accuracy):</strong> MLP → <strong>M1 baseline</strong>
+    (0.9732) — ninguna variación superó al baseline en 6 épocas. CNN → <strong>C6
+    weight_decay</strong> (0.9883), apenas por encima de C3 (sin BatchNorm, 0.9880) y del
+    resto del clúster CNN (0.987-0.988) — las variaciones probadas quedaron dentro de un
+    margen estrecho.
+  </div>
+
+  <h2>Decisiones y por qué</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros del enfoque</h3>
+      <ul>
+        <li>Cada config cambia como máximo 1-2 variables respecto al baseline de su
+        arquitectura (M1/C1), permitiendo leer el efecto de cada cambio de forma
+        aislada en la tabla.</li>
+        <li><code>run_config</code> re-siembra <code>torch.manual_seed(SEED)</code> antes
+        de cada corrida — las diferencias entre configuraciones no vienen de una
+        inicialización de pesos distinta por azar.</li>
+        <li>Se guarda el historial completo de loss por época en cada resultado, no solo
+        el valor final — permite graficar curvas train-vs-val sin volver a entrenar.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Contras / límites</h3>
+      <ul>
+        <li>6 épocas por configuración es un presupuesto corto — suficiente para separar
+        tendencias (p. ej. M4 con lr alto claramente peor) pero probablemente ambos
+        clústeres (MLP ~97%, CNN ~98.8%) aún tienen margen de mejora con más épocas.</li>
+        <li>El clúster CNN quedó muy apretado (0.987-0.988): con solo 6,000 imágenes de
+        validación, esas diferencias de décimas de punto están cerca del ruido de
+        muestreo y no deben sobre-interpretarse como una jerarquía firme.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Investigación detallada: por qué el margen CNN es tan estrecho</h2>
+  <p>MNIST es un problema donde una CNN pequeña ya captura casi todo el patrón útil:
+  una vez que hay ≥2 capas convolucionales con pooling, el techo de accuracy en 6
+  épocas está dominado por la arquitectura convolucional en sí, no por los ajustes
+  finos (BatchNorm, tipo de pooling, dropout leve, L2). Por eso C1-C6 se agrupan en un
+  rango de 0.4 puntos porcentuales, mientras que en el MLP sí se ve una diferencia
+  clara y explicable: M4 (lr=1e-2) empeora fuerte porque un paso de Adam diez veces
+  mayor que el baseline sobre-corrige los pesos en cada actualización.</p>
+
+  <h2>Impedimentos encontrados</h2>
+  <p>La primera ejecución del sweep completo (12 configs × 6 épocas, ~10 minutos en
+  MPS) se lanzó en background; por una confusión de seguimiento se lanzó una segunda
+  ejecución redundante sobre el mismo notebook antes de confirmar que la primera había
+  terminado. Se verificó que la primera ya había escrito sus resultados
+  (214,946 bytes) antes de que la segunda iniciara, y que el notebook final tiene las
+  23 celdas de código ejecutadas sin error — sin corrupción de datos, pero se corrige
+  el flujo de verificación para las corridas restantes.</p>
+
+  <h2>Qué más se podría hacer</h2>
+  <ul>
+    <li><strong>Más épocas en las configuraciones ganadoras</strong> (M1, C6) para ver
+    si el margen CNN se amplía o si el MLP alcanza una meseta antes.</li>
+    <li><strong>Grid/random search más amplio</strong> sobre CNN (más combinaciones de
+    canales, kernel_size) ya que el margen actual entre configs es estrecho y podría
+    haber una combinación claramente mejor fuera del espacio probado.</li>
+  </ul>
+
+  <h2>Glosario</h2>
+  <dl class="glossary">
+    <dt>Baseline</dt>
+    <dd>Configuración de referencia (M1/C1) contra la que se comparan las demás
+    variantes, cambiando una o dos variables a la vez.</dd>
+
+    <dt>Ruido de muestreo (sampling noise)</dt>
+    <dd>Variación en una métrica que viene del tamaño finito del conjunto de
+    evaluación, no de una diferencia real entre modelos — relevante aquí porque el
+    val set tiene 6,000 imágenes.</dd>
+  </dl>
+
+  <footer>
+    <span>Laboratorio #2 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 4 de 6</span>
+  </footer>
+</div>

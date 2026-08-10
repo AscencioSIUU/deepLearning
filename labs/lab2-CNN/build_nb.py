@@ -373,6 +373,139 @@ for name, m in [("MLP", mlp_smoke), ("CNN", cnn_smoke)]:
     print(f"{name} smoke test OK -> train_loss={hist['train_loss'][0]:.3f} val_loss={hist['val_loss'][0]:.3f}")
 """)
 
+# ---------------------------------------------------------------- 5. Iteración de hiperparámetros
+md("## 5. Iteración de hiperparámetros (12 configuraciones: 6 MLP + 6 CNN)")
+md("""
+Se parte de una configuración base por arquitectura y se cambia 1-2 variables a la vez
+(ancho/profundidad, activación, optimizador/lr, batch size, regularización) para poder
+atribuir el efecto de cada cambio, siguiendo la misma estrategia del Lab #1.
+""")
+code("""
+def build_optimizer(name, params, lr, weight_decay=0.0):
+    if name == "adam":
+        return torch.optim.Adam(params, lr=lr, weight_decay=weight_decay)
+    if name == "sgd":
+        return torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=weight_decay)
+    if name == "rmsprop":
+        return torch.optim.RMSprop(params, lr=lr, weight_decay=weight_decay)
+    raise ValueError(name)
+
+
+def run_config(cfg):
+    torch.manual_seed(SEED)
+    train_loader, val_loader, _ = make_loaders(cfg["batch_size"])
+    model = MLP(**cfg["model_kwargs"]) if cfg["arch"] == "mlp" else CNN(**cfg["model_kwargs"])
+    model.to(DEVICE)
+    optimizer = build_optimizer(cfg["optimizer"], model.parameters(), cfg["lr"], cfg.get("weight_decay", 0.0))
+
+    t0 = time.time()
+    history = train_model(model, train_loader, val_loader, optimizer, cfg["epochs"])
+    train_time = time.time() - t0
+
+    val_metrics = evaluate_metrics(model, val_loader)
+    return {
+        "id": cfg["id"],
+        "arch": cfg["arch"],
+        "description": cfg["description"],
+        "n_params": count_params(model),
+        "train_time_s": round(train_time, 1),
+        "val_loss": val_metrics["loss"],
+        "val_accuracy": val_metrics["accuracy"],
+        "val_precision": val_metrics["precision"],
+        "val_recall": val_metrics["recall"],
+        "val_f1": val_metrics["f1"],
+        "history": history,
+    }
+""")
+
+code("""
+mlp_configs = [
+    dict(id="M1 baseline", arch="mlp", description="[128,64], ReLU, Adam/1e-3",
+         model_kwargs=dict(hidden_sizes=(128, 64), activation=nn.ReLU),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="M2 wider", arch="mlp", description="[256,128], ReLU, Adam/1e-3",
+         model_kwargs=dict(hidden_sizes=(256, 128), activation=nn.ReLU),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="M3 LeakyReLU", arch="mlp", description="[128,64], LeakyReLU, Adam/1e-3",
+         model_kwargs=dict(hidden_sizes=(128, 64), activation=nn.LeakyReLU),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="M4 lr alto", arch="mlp", description="[128,64], ReLU, Adam/1e-2",
+         model_kwargs=dict(hidden_sizes=(128, 64), activation=nn.ReLU),
+         optimizer="adam", lr=1e-2, batch_size=64, epochs=6),
+    dict(id="M5 dropout", arch="mlp", description="[128,64], ReLU, Adam/1e-3, dropout=0.3",
+         model_kwargs=dict(hidden_sizes=(128, 64), activation=nn.ReLU, dropout=0.3),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="M6 batch grande", arch="mlp", description="[128,64], ReLU, Adam/1e-3, batch=256",
+         model_kwargs=dict(hidden_sizes=(128, 64), activation=nn.ReLU),
+         optimizer="adam", lr=1e-3, batch_size=256, epochs=6),
+]
+
+cnn_configs = [
+    dict(id="C1 baseline", arch="cnn", description="conv=[16,32], BN, MaxPool, ReLU, Adam/1e-3",
+         model_kwargs=dict(conv_channels=(16, 32), fc_hidden=64, activation=nn.ReLU),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="C2 mas canales", arch="cnn", description="conv=[32,64], BN, MaxPool, ReLU, Adam/1e-3",
+         model_kwargs=dict(conv_channels=(32, 64), fc_hidden=64, activation=nn.ReLU),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="C3 sin BatchNorm", arch="cnn", description="conv=[16,32], sin BN, MaxPool, ReLU, Adam/1e-3",
+         model_kwargs=dict(conv_channels=(16, 32), fc_hidden=64, activation=nn.ReLU, use_batchnorm=False),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="C4 AvgPool", arch="cnn", description="conv=[16,32], BN, AvgPool, ReLU, Adam/1e-3",
+         model_kwargs=dict(conv_channels=(16, 32), fc_hidden=64, activation=nn.ReLU, pool="avg"),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="C5 dropout", arch="cnn", description="conv=[16,32], BN, MaxPool, ReLU, Adam/1e-3, dropout=0.3",
+         model_kwargs=dict(conv_channels=(16, 32), fc_hidden=64, activation=nn.ReLU, dropout=0.3),
+         optimizer="adam", lr=1e-3, batch_size=64, epochs=6),
+    dict(id="C6 weight_decay", arch="cnn", description="conv=[16,32], BN, MaxPool, ReLU, Adam/1e-3, L2=1e-4",
+         model_kwargs=dict(conv_channels=(16, 32), fc_hidden=64, activation=nn.ReLU),
+         optimizer="adam", lr=1e-3, weight_decay=1e-4, batch_size=64, epochs=6),
+]
+
+all_configs = mlp_configs + cnn_configs
+results = []
+for cfg in all_configs:
+    r = run_config(cfg)
+    results.append(r)
+    print(f"{r['id']:20s} params={r['n_params']:>7} val_acc={r['val_accuracy']:.4f} "
+          f"val_loss={r['val_loss']:.4f} time={r['train_time_s']}s")
+""")
+
+md("### Tabla de resultados")
+code("""
+results_df = pd.DataFrame([{k: v for k, v in r.items() if k != "history"} for r in results])
+results_df
+""")
+
+md("### Curvas de pérdida (train vs. val)")
+code("""
+to_plot = ["M1 baseline", "M2 wider", "M4 lr alto", "C1 baseline", "C3 sin BatchNorm", "C6 weight_decay"]
+fig, axes = plt.subplots(2, 3, figsize=(13, 7))
+for ax, cid in zip(axes.flat, to_plot):
+    r = next(r for r in results if r["id"] == cid)
+    h = r["history"]
+    ax.plot(h["train_loss"], label="train")
+    ax.plot(h["val_loss"], label="val")
+    ax.set_title(cid, fontsize=10)
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("loss")
+    ax.legend(fontsize=8)
+plt.tight_layout()
+plt.show()
+""")
+
+md("""
+**Lectura de las curvas:** se completa en el Batch 6 (Discusión y análisis), una vez
+disponibles los resultados finales de test.
+""")
+
+md("### Selección de la mejor configuración por arquitectura")
+code("""
+best_mlp = max([r for r in results if r["arch"] == "mlp"], key=lambda r: r["val_accuracy"])
+best_cnn = max([r for r in results if r["arch"] == "cnn"], key=lambda r: r["val_accuracy"])
+print("Mejor MLP:", best_mlp["id"], "-> val_accuracy =", round(best_mlp["val_accuracy"], 4))
+print("Mejor CNN:", best_cnn["id"], "-> val_accuracy =", round(best_cnn["val_accuracy"], 4))
+""")
+
 nb["cells"] = cells
 with open("lab2_cnn.ipynb", "w") as f:
     nbf.write(nb, f)
