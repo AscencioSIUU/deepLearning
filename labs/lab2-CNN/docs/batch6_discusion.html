@@ -1,0 +1,260 @@
+<title>Batch 6 — Discusión y reporte final</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --panel: #ece8dd;
+    --ink: #201f1c;
+    --ink-dim: #59564c;
+    --rule: #d8d3c4;
+    --accent: #3949ab;
+    --accent-ink: #ffffff;
+    --accent-soft: #e4e6f7;
+    --good: #2f7a4f;
+    --good-soft: #e2f0e6;
+    --bad: #a34a26;
+    --bad-soft: #f5e6dd;
+    --warn: #9a7b1f;
+    --warn-soft: #f5edd8;
+    --code-bg: #1c1b26;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a;
+    --panel: #1e1d24;
+    --ink: #eae8e2;
+    --ink-dim: #a5a196;
+    --rule: #34323c;
+    --accent: #8fa3ff;
+    --accent-ink: #12131f;
+    --accent-soft: #23264a;
+    --good: #7fd9a4;
+    --good-soft: #1c3327;
+    --bad: #e8a685;
+    --bad-soft: #3a2620;
+    --warn: #e8ca7f;
+    --warn-soft: #3a3220;
+    --code-bg: #0e0d13;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a;
+      --panel: #1e1d24;
+      --ink: #eae8e2;
+      --ink-dim: #a5a196;
+      --rule: #34323c;
+      --accent: #8fa3ff;
+      --accent-ink: #12131f;
+      --accent-soft: #23264a;
+      --good: #7fd9a4;
+      --good-soft: #1c3327;
+      --bad: #e8a685;
+      --bad-soft: #3a2620;
+      --warn: #e8ca7f;
+      --warn-soft: #3a3220;
+      --code-bg: #0e0d13;
+      --code-ink: #e8e6f0;
+      --code-accent: #8fa3ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: var(--accent); }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 2.3rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; }
+  h2 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2.6rem 0 0.9rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.5rem; }
+  p { margin: 0.7rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.6rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; max-width: 62ch; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { border-radius: 10px; padding: 1.1rem 1.2rem; border: 1px solid var(--rule); }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+  .card ul { padding-left: 1.1rem; }
+
+  .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  thead th { background: var(--panel); font-family: ui-monospace, monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt { font-weight: 700; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); margin-top: 0.9rem; }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 6 · Laboratorio #2 — CNN</div>
+  <h1>Discusión y reporte final</h1>
+  <p class="subtitle">
+    Las 6 preguntas del enunciado respondidas con los números reales de las secciones
+    5 y 6, más el reporte PDF (≤3 páginas) que empaqueta todo el laboratorio.
+  </p>
+
+  <h2>Qué se hizo</h2>
+  <p>Se respondieron las 6 preguntas de discusión del enunciado directamente con los
+  resultados de las 12 iteraciones (Batch 4) y la evaluación final (Batch 5),
+  incluyendo un análisis cuantitativo de las confusiones más frecuentes de cada
+  arquitectura (<code>top_confusions</code> sobre la matriz de confusión de test). Se
+  escribió <code>reporte.md</code> (≤3 páginas) con la investigación de capas, tabla de
+  iteraciones, comparación de arquitecturas y conclusiones, siguiendo el mismo formato
+  pandoc del Lab #1.</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Modelo</th><th>Top confusión (real→predicho)</th><th>Conteo</th></tr></thead>
+      <tbody>
+        <tr><td>MLP</td><td>8 → 3</td><td class="num">16 de 10,000</td></tr>
+        <tr><td>CNN</td><td>2 → 7</td><td class="num">12 de 10,000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>Hallazgo del análisis de errores:</strong> el MLP y la CNN se equivocan en
+    <em>pares distintos</em> de dígitos (8→3 vs. 2→7), no solo en menor cantidad — señal
+    de que no es simplemente "la CNN comete los mismos errores que el MLP pero menos
+    veces", sino que cada arquitectura tiene sesgos de error propios según cómo procesa
+    la imagen (aplanada vs. espacial).
+  </div>
+
+  <h2>Decisiones y por qué</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros del enfoque</h3>
+      <ul>
+        <li>Cada respuesta de discusión cita el número exacto de la tabla/gráfica que la
+        sustenta (val_acc, F1, conteos de confusión) en vez de afirmaciones genéricas —
+        verificable contra las celdas de código que las generaron.</li>
+        <li>El análisis de errores usa <code>top_confusions</code> calculado directamente
+        sobre la matriz de confusión de test, no una lectura visual aproximada de la
+        gráfica — números exactos y reproducibles.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Contras / límites</h3>
+      <ul>
+        <li>El reporte PDF resume el laboratorio en 3 páginas; el detalle de las 12
+        configuraciones vive en las tablas del notebook y de este HTML — el PDF prioriza
+        síntesis sobre exhaustividad, como pide el enunciado.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Impedimentos encontrados</h2>
+  <p>Ejecutar el notebook completo (12 configuraciones + reentrenamiento final de 15
+  épocas cada arquitectura) toma más de los 10 minutos de límite por comando del
+  entorno de ejecución. Dos intentos de relanzar la ejecución en background quedaron
+  corriendo en paralelo sobre el mismo archivo sin que el proceso anterior hubiera
+  terminado — se detectó revisando los procesos activos (<code>ps aux</code>) y
+  comparando contra los logs de cada intento, se mataron los procesos duplicados, y se
+  relanzó una única ejecución <strong>desacoplada</strong> del límite de tiempo del
+  comando (<code>nohup ... &amp; disown</code>), verificando al final que solo un
+  proceso estuvo activo durante toda la corrida y que las 28 celdas de código
+  terminaron sin error.</p>
+
+  <h2>Qué más se podría hacer</h2>
+  <ul>
+    <li><strong>Ejecutar con más semillas</strong> (3-5 seeds) para reportar accuracy
+    con desviación estándar, dado lo ajustado del clúster CNN observado en el Batch 4.</li>
+    <li><strong>Aumentar el presupuesto de épocas</strong> del sweep completo (Batch 4)
+    de 6 a 10-12, ahora que se confirma que ejecutar el notebook completo toma varios
+    minutos de todas formas — el costo marginal de más épocas es proporcionalmente menor.</li>
+  </ul>
+
+  <h2>Glosario</h2>
+  <dl class="glossary">
+    <dt>Proceso desacoplado (detached / nohup)</dt>
+    <dd>Proceso lanzado de forma que sigue corriendo aunque termine el comando/terminal
+    que lo inició — necesario aquí porque el entrenamiento completo excede el límite de
+    tiempo del comando que lo lanza.</dd>
+  </dl>
+
+  <footer>
+    <span>Laboratorio #2 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 6 de 6</span>
+  </footer>
+</div>

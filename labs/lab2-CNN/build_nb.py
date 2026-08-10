@@ -547,6 +547,19 @@ for name, r in [("MLP", final_mlp), ("CNN", final_cnn)]:
 
 md("### Matrices de confusión")
 code("""
+def top_confusions(cm, k=5):
+    pairs = [((i, j), cm[i, j]) for i in range(10) for j in range(10) if i != j]
+    pairs.sort(key=lambda p: -p[1])
+    return pairs[:k]
+
+print("MLP - top confusiones (real -> predicho: conteo):")
+for (i, j), n in top_confusions(final_mlp["cm"]):
+    print(f"  {i} -> {j}: {n}")
+print("CNN - top confusiones (real -> predicho: conteo):")
+for (i, j), n in top_confusions(final_cnn["cm"]):
+    print(f"  {i} -> {j}: {n}")
+""")
+code("""
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
 for ax, name, r in zip(axes, ["MLP", "CNN"], [final_mlp, final_cnn]):
     ConfusionMatrixDisplay(r["cm"]).plot(ax=ax, colorbar=False, cmap="Blues")
@@ -592,6 +605,95 @@ ax.set_ylabel("Accuracy (test)")
 ax.set_title("Parámetros vs. accuracy de test")
 plt.tight_layout()
 plt.show()
+""")
+
+# ---------------------------------------------------------------- 8. Discusión y análisis
+md("## 8. Discusión y análisis")
+
+md("""
+### ¿Qué cambio de hiperparámetro tuvo el mayor impacto positivo/negativo?
+
+**MLP:** ningún cambio superó al baseline (M1, val_acc=0.9732) en 6 épocas — el
+**mayor impacto negativo** fue subir el `lr` de Adam a 1e-2 (M4: val_acc=0.9542,
+val_loss=0.2297, claramente peor que el resto): un paso diez veces mayor sobre-corrige
+los pesos en cada actualización. Dropout (M5) y batch grande (M6) también empeoraron
+levemente respecto al baseline, consistente con underfitting en un presupuesto de solo
+6 épocas.
+
+**CNN:** el **mayor impacto positivo** fue `weight_decay=1e-4` (C6: val_acc=0.9883,
+el mejor del grupo) y quitar BatchNorm (C3: val_acc=0.9880, segundo mejor) — ambos por
+márgenes pequeños (~0.1pp) dentro de un clúster muy apretado (0.9873–0.9883). Ningún
+cambio tuvo impacto negativo notable en la CNN; todas las variantes quedaron dentro de
+0.5pp del baseline, a diferencia del MLP donde `lr` alto sí rompió el entrenamiento.
+
+### ¿Observaron overfitting o underfitting?
+
+Con 6 épocas y modelos de tamaño moderado, la señal predominante en el Batch 4 es
+**underfitting leve**: en la mayoría de curvas train y val bajan juntas sin separarse
+(ver gráficas de la sección 5), y extender a 15 épocas en la evaluación final (sección
+6) mejoró accuracy en ambas arquitecturas (MLP: 0.9732→0.9775 val→test; CNN:
+0.9883→0.9895), confirmando que el presupuesto corto del Batch 4 no había agotado la
+capacidad de mejora. No se identificó overfitting agudo (val_loss divergiendo de
+train_loss) en ninguna configuración de 6 épocas — se mitigó simplemente dándole más
+tiempo de entrenamiento a las configuraciones ganadoras antes de la evaluación final.
+
+### ¿La regularización mejoró el desempeño en validación?
+
+**MLP:** no. Dropout=0.3 (M5, val_acc=0.9667) quedó por debajo del baseline sin
+regularizar (M1, 0.9732) — con el modelo aún underfitting a 6 épocas, apagar el 30% de
+las activaciones solo le restó capacidad efectiva sin que hubiera overfitting que
+corregir.
+
+**CNN:** parcialmente. `weight_decay` (C6) sí mejoró levemente sobre el baseline sin
+regularizar (C1, 0.9875→0.9883) — un L2 suave penaliza pesos grandes sin quitarle
+capacidad al modelo como sí hace dropout, por eso funcionó mejor en un régimen donde
+el modelo todavía no sobreajustaba. Dropout=0.3 en la CNN (C5, 0.9877) quedó
+prácticamente empatado con el baseline, ni ayudó ni perjudicó de forma notable.
+
+### MLP vs. CNN: ¿cuál obtuvo mejor desempeño en test?
+
+La CNN ganó claramente: **98.95% vs. 97.75%** de accuracy en test (F1 macro 0.9894 vs.
+0.9774), usando además **menos parámetros** (105,962 vs. 109,386). La diferencia se
+explica directamente por cómo cada arquitectura procesa la información espacial: el
+MLP aplana la imagen a un vector de 784 valores y trata cada píxel como una feature
+independiente, perdiendo toda noción de qué píxeles son vecinos. La CNN, mediante
+convolución con pesos compartidos y campo receptivo local (Batch 2), explota
+directamente que los trazos de un dígito son patrones locales (bordes, curvas) que
+aparecen en distintas posiciones de la imagen — la misma razón por la que logra mejor
+accuracy con menos parámetros: cada parámetro se reutiliza espacialmente en vez de
+dedicarse a una única posición de píxel.
+
+### ¿En qué tipo de errores se equivocan más el MLP y la CNN?
+
+Las confusiones más frecuentes de cada modelo (real → predicho: conteo, sobre 10,000
+imágenes de test):
+
+- **MLP:** 8→3 (16), 6→5 (11), 9→4 (11), 7→9 (9), 8→9 (8).
+- **CNN:** 2→7 (12), 9→4 (9), 6→5 (8), 9→5 (6), 3→5 (5).
+
+Ambos modelos comparten el mismo tipo de error de fondo: pares de dígitos que
+comparten trazos curvos similares al escribirse a mano (9↔4, 6↔5, 8↔3/9) — el error
+no es aleatorio, sino sistemático sobre las ambigüedades reales de la escritura a
+mano. El MLP tiene su confusión más frecuente en 8→3 (16 casos), un par que comparte
+las mismas curvas cerradas en la mitad inferior del trazo pero que un MLP no puede
+distinguir bien porque, al aplanar la imagen, pierde la relación espacial entre la
+curva superior y la inferior que sí las diferencia. La CNN, en cambio, tiene su error
+más frecuente en 2→7 (12 casos) — un patrón distinto, típicamente causado por 2s
+escritos sin el trazo curvo inferior (pareciéndose a un 7 con línea diagonal). En
+conteos totales, ambos modelos cometen pocos errores por par (≤16 de 10,000), pero el
+patrón confirma que el procesamiento espacial de la CNN no elimina las ambigüedades
+inherentes de los trazos manuscritos, solo reduce su frecuencia.
+
+### Modelo de producción: ¿qué arquitectura elegirían?
+
+**CNN**, priorizando tanto exactitud como eficiencia de parámetros: gana en accuracy
+(98.95% vs 97.75%), en F1 macro, y lo hace con **menos** parámetros entrenables que el
+MLP — es estrictamente mejor en ambos ejes de "calidad" y "tamaño del modelo". El
+único costo real es tiempo de entrenamiento/cómputo por imagen (~2× más lento en esta
+corrida, sección 6), pero eso es una inversión única en tiempo de entrenamiento offline,
+no un costo recurrente en inferencia por request — y en un problema de visión como
+MNIST, el modelo que sí modela la estructura espacial de la imagen es la elección
+correcta salvo que el presupuesto de latencia de inferencia sea extremadamente estricto.
 """)
 
 nb["cells"] = cells
