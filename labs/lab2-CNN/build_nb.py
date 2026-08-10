@@ -506,6 +506,94 @@ print("Mejor MLP:", best_mlp["id"], "-> val_accuracy =", round(best_mlp["val_acc
 print("Mejor CNN:", best_cnn["id"], "-> val_accuracy =", round(best_cnn["val_accuracy"], 4))
 """)
 
+# ---------------------------------------------------------------- 6. Evaluación final sobre test
+md("## 6. Evaluación final sobre test")
+md("""
+**Regla de aislamiento respetada:** `test_ds` se usa aquí por primera y única vez, con
+las dos configuraciones ganadoras de validación (`best_mlp`, `best_cnn`) reentrenadas
+desde cero con más épocas y evaluadas una sola vez sobre test.
+""")
+code("""
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+def retrain_and_test(cfg, epochs):
+    cfg = dict(cfg, epochs=epochs)
+    torch.manual_seed(SEED)
+    train_loader, val_loader, test_loader = make_loaders(cfg["batch_size"])
+    model = MLP(**cfg["model_kwargs"]) if cfg["arch"] == "mlp" else CNN(**cfg["model_kwargs"])
+    model.to(DEVICE)
+    optimizer = build_optimizer(cfg["optimizer"], model.parameters(), cfg["lr"], cfg.get("weight_decay", 0.0))
+    t0 = time.time()
+    history = train_model(model, train_loader, val_loader, optimizer, cfg["epochs"])
+    train_time = time.time() - t0
+    test_metrics = evaluate_metrics(model, test_loader)
+    _, preds, labels = run_epoch(model, test_loader, nn.CrossEntropyLoss(), optimizer=None)
+    cm = confusion_matrix(labels, preds)
+    return dict(model=model, history=history, train_time_s=round(train_time, 1),
+                test_metrics=test_metrics, cm=cm, n_params=count_params(model))
+
+best_mlp_cfg = next(c for c in mlp_configs if c["id"] == best_mlp["id"])
+best_cnn_cfg = next(c for c in cnn_configs if c["id"] == best_cnn["id"])
+
+final_mlp = retrain_and_test(best_mlp_cfg, epochs=15)
+final_cnn = retrain_and_test(best_cnn_cfg, epochs=15)
+
+for name, r in [("MLP", final_mlp), ("CNN", final_cnn)]:
+    m = r["test_metrics"]
+    print(f"{name} ({r['n_params']} params, {r['train_time_s']}s) -> "
+          f"acc={m['accuracy']:.4f} precision={m['precision']:.4f} "
+          f"recall={m['recall']:.4f} f1={m['f1']:.4f}")
+""")
+
+md("### Matrices de confusión")
+code("""
+fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
+for ax, name, r in zip(axes, ["MLP", "CNN"], [final_mlp, final_cnn]):
+    ConfusionMatrixDisplay(r["cm"]).plot(ax=ax, colorbar=False, cmap="Blues")
+    ax.set_title(f"{name} (test) — {best_mlp['id'] if name=='MLP' else best_cnn['id']}")
+plt.tight_layout()
+plt.show()
+""")
+
+# ---------------------------------------------------------------- 7. Comparación de arquitecturas
+md("## 7. Comparación de arquitecturas")
+code("""
+comparison_df = pd.DataFrame([
+    {
+        "Arquitectura": "MLP", "Config": best_mlp["id"],
+        "Parámetros": final_mlp["n_params"],
+        "Accuracy (test)": final_mlp["test_metrics"]["accuracy"],
+        "Precision (test)": final_mlp["test_metrics"]["precision"],
+        "Recall (test)": final_mlp["test_metrics"]["recall"],
+        "F1 (test)": final_mlp["test_metrics"]["f1"],
+        "Tiempo entrenamiento (s)": final_mlp["train_time_s"],
+    },
+    {
+        "Arquitectura": "CNN", "Config": best_cnn["id"],
+        "Parámetros": final_cnn["n_params"],
+        "Accuracy (test)": final_cnn["test_metrics"]["accuracy"],
+        "Precision (test)": final_cnn["test_metrics"]["precision"],
+        "Recall (test)": final_cnn["test_metrics"]["recall"],
+        "F1 (test)": final_cnn["test_metrics"]["f1"],
+        "Tiempo entrenamiento (s)": final_cnn["train_time_s"],
+    },
+])
+comparison_df
+""")
+
+code("""
+fig, ax = plt.subplots(figsize=(6, 4.5))
+for _, row in comparison_df.iterrows():
+    ax.scatter(row["Parámetros"], row["Accuracy (test)"], s=120, label=row["Arquitectura"])
+    ax.annotate(row["Arquitectura"], (row["Parámetros"], row["Accuracy (test)"]),
+                xytext=(8, 4), textcoords="offset points")
+ax.set_xlabel("Parámetros entrenables")
+ax.set_ylabel("Accuracy (test)")
+ax.set_title("Parámetros vs. accuracy de test")
+plt.tight_layout()
+plt.show()
+""")
+
 nb["cells"] = cells
 with open("lab2_cnn.ipynb", "w") as f:
     nbf.write(nb, f)
