@@ -31,3 +31,13 @@ curl -sL -o labs/lab1-mlp/data/housing.csv \
   PyTorch sobre el dataset California Housing Prices. Explicadores de cada etapa en
   [`labs/lab1-mlp/docs/`](labs/lab1-mlp/docs/). Reporte final (PDF):
   [`Reporte - Laboratorio 1 MLP.pdf`](Reporte%20-%20Laboratorio%201%20MLP.pdf).
+
+## Proyectos
+
+- [Proyecto #1 — Competencia de Modelación](projects/proy-1-competencia/): MLP en
+  PyTorch sobre el dataset Ames House Prices, competencia por RMSE. EDA,
+  preprocesamiento, sweep de iteraciones y modelo final en
+  [`proy1_mlp.ipynb`](projects/proy-1-competencia/proy1_mlp.ipynb). Explicadores de
+  cada etapa en [`projects/proy-1-competencia/docs/`](projects/proy-1-competencia/docs/).
+  Reporte final: [`reporte.pdf`](projects/proy-1-competencia/reporte.pdf).
+  Reproducción: [`projects/proy-1-competencia/README.md`](projects/proy-1-competencia/README.md).
