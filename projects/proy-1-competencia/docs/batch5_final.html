@@ -1,0 +1,275 @@
+<title>Batch 5 — Modelo final y predicción</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --panel: #ece8dd;
+    --ink: #201f1c;
+    --ink-dim: #59564c;
+    --rule: #d8d3c4;
+    --accent: #3949ab;
+    --accent-ink: #ffffff;
+    --accent-soft: #e4e6f7;
+    --good: #2f7a4f;
+    --good-soft: #e2f0e6;
+    --bad: #a34a26;
+    --bad-soft: #f5e6dd;
+    --warn: #9a7b1f;
+    --warn-soft: #f5edd8;
+    --code-bg: #1c1b26;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a;
+    --panel: #1e1d24;
+    --ink: #eae8e2;
+    --ink-dim: #a5a196;
+    --rule: #34323c;
+    --accent: #8fa3ff;
+    --accent-ink: #12131f;
+    --accent-soft: #23264a;
+    --good: #7fd9a4;
+    --good-soft: #1c3327;
+    --bad: #e8a685;
+    --bad-soft: #3a2620;
+    --warn: #e8ca7f;
+    --warn-soft: #3a3220;
+    --code-bg: #0e0d13;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a;
+      --panel: #1e1d24;
+      --ink: #eae8e2;
+      --ink-dim: #a5a196;
+      --rule: #34323c;
+      --accent: #8fa3ff;
+      --accent-ink: #12131f;
+      --accent-soft: #23264a;
+      --good: #7fd9a4;
+      --good-soft: #1c3327;
+      --bad: #e8a685;
+      --bad-soft: #3a2620;
+      --warn: #e8ca7f;
+      --warn-soft: #3a3220;
+      --code-bg: #0e0d13;
+      --code-ink: #e8e6f0;
+      --code-accent: #8fa3ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: var(--accent); }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 2.3rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; }
+  h2 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2.6rem 0 0.9rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.5rem; }
+  p { margin: 0.7rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.6rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; max-width: 62ch; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { border-radius: 10px; padding: 1.1rem 1.2rem; border: 1px solid var(--rule); }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+  .card ul { padding-left: 1.1rem; }
+
+  .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  thead th { background: var(--panel); font-family: ui-monospace, monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt { font-weight: 700; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); margin-top: 0.9rem; }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 5 · Proyecto 1 — Competencia MLP</div>
+  <h1>Modelo final y predicción</h1>
+  <p class="subtitle">
+    <code>train.py</code> guarda pesos + pipeline; <code>predict.py</code> los carga y
+    predice sobre cualquier CSV nuevo sin pasos manuales — así se llega listo al
+    held-out del día de presentación.
+  </p>
+
+  <h2>Qué se hizo</h2>
+  <p><code>train.py</code> reentrena la config ganadora del sweep (C1: 64→32, sin
+  regularización) sobre <strong>todo</strong> <code>train.csv</code> (más datos
+  disponibles = mejor generalización esperada en el held-out real), fijando el número
+  de épocas al punto óptimo observado en el split 80/20 interno. Guarda
+  <code>artifacts/model.pt</code>, <code>artifacts/pipeline.joblib</code> y
+  <code>artifacts/meta.json</code>. <code>predict.py</code> carga esos 3 artifacts y
+  predice sobre un CSV nuevo, invirtiendo <code>expm1</code> para devolver USD.</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+      <tbody>
+        <tr><td>Config final</td><td>MLP 64→32, sin dropout/weight_decay/batchnorm</td></tr>
+        <tr><td>Épocas (reentreno con todo train)</td><td class="num">174</td></tr>
+        <tr><td>Val RMSE interno (log), split 80/20</td><td class="num">0.2039</td></tr>
+        <tr><td>Val RMSE interno (USD), split 80/20</td><td class="num">$41,401</td></tr>
+        <tr><td>Sanity check: predict.py sobre train.csv completo</td><td class="num">RMSE $112,185 (log 0.1284)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Decisiones y por qué</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros del enfoque</h3>
+      <ul>
+        <li>El pipeline serializado (<code>joblib</code>) se ajusta una sola vez y se
+        reutiliza en <code>predict.py</code> — elimina por construcción el riesgo de
+        que entrenamiento y predicción usen transformaciones distintas (recomendación
+        #2 del enunciado).</li>
+        <li><code>meta.json</code> guarda la arquitectura exacta usada, así
+        <code>predict.py</code> reconstruye el <code>MLP</code> con los mismos
+        argumentos sin hardcodearlos dos veces.</li>
+        <li>El número de épocas del reentreno final se fija al punto óptimo ya
+        observado (no se usa early stopping con datos que ya no tienen validación
+        separada) — evita entrenar "a ciegas" sobre el 100% de los datos.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Contras / límites</h3>
+      <ul>
+        <li>El "sanity check" de <code>predict.py</code> sobre <code>train.csv</code>
+        completo <strong>no es una medida honesta de generalización</strong> (el
+        modelo ya vio esos datos) — solo confirma que el pipeline end-to-end corre sin
+        error. La métrica real de generalización es el RMSE del split 80/20 guardado
+        en <code>meta.json</code> ($41,401).</li>
+        <li>El RMSE en USD del sanity check ($112,185) es mucho peor que el log RMSE
+        sugiere, por un motivo concreto: ver la sección siguiente.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Investigación detallada: por qué el sanity check en USD se dispara</h2>
+  <p>Al predecir sobre <code>train.csv</code> completo (incluyendo los 2 outliers de
+  <code>GrLivArea</code>&gt;4000 identificados en el EDA), la casa Id=1299
+  (<code>GrLivArea</code>=5642, <code>SalePrice</code> real=$160,000) recibe una
+  predicción de <strong>$3.88M</strong> — un error de +$3.7M en un solo punto.
+  El modelo nunca vio casas con esa área durante el entrenamiento (se excluyeron por
+  diseño), así que extrapola fuera de su rango de entrenamiento; en log-espacio ese
+  error es moderado, pero <code>expm1</code> lo amplifica exponencialmente al volver
+  a USD. Excluyendo esos 2 puntos conocidos, el RMSE sobre train baja a
+  <strong>$13,037</strong> (esperable, es desempeño de train, no de generalización).
+  Esto confirma una limitación real del modelo: <strong>es frágil ante extrapolación
+  fuera del rango de entrenamiento</strong> — relevante si el held-out del día de
+  competencia contiene casas con características fuera de lo visto en
+  <code>train.csv</code> (se documenta como limitación en la discusión, Batch 6).</p>
+
+  <h2>Impedimentos encontrados</h2>
+  <p>Ninguno; ambos scripts corrieron de punta a punta sin intervención manual.</p>
+
+  <h2>Qué más se podría hacer</h2>
+  <ul>
+    <li><strong>Clipping de predicciones</strong> a un rango razonable (p. ej. el
+    percentil 1–99 de <code>SalePrice</code> visto en train) como salvaguarda contra
+    extrapolaciones catastróficas en el held-out.</li>
+    <li><strong>K-fold para el modelo final</strong>, promediando predicciones de
+    varios folds, si el tiempo antes de la presentación lo permite.</li>
+  </ul>
+
+  <h2>Glosario</h2>
+  <dl class="glossary">
+    <dt>Extrapolación</dt>
+    <dd>Predecir sobre entradas fuera del rango de valores visto durante
+    entrenamiento; los modelos de ML en general no tienen garantías de
+    comportamiento razonable ahí.</dd>
+
+    <dt>Sanity check vs. validación</dt>
+    <dd>Correr <code>predict.py</code> sobre datos ya vistos en entrenamiento solo
+    confirma que el pipeline funciona técnicamente — no mide generalización, que
+    requiere datos no vistos (el split 80/20 o el held-out real).</dd>
+  </dl>
+
+  <footer>
+    <span>Proyecto 1 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 5 de 6</span>
+  </footer>
+</div>

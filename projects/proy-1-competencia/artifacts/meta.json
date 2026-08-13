@@ -1,0 +1,13 @@
+{
+  "hidden_sizes": [
+    64,
+    32
+  ],
+  "dropout": 0.0,
+  "batchnorm": false,
+  "n_features_in": 223,
+  "n_epochs_final": 174,
+  "holdout_val_rmse_log": 0.20385555448242507,
+  "holdout_val_rmse_usd": 41401.02103699838,
+  "seed": 42
+}
