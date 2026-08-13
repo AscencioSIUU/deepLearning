@@ -1,0 +1,281 @@
+<title>Batch 4 — Iteraciones</title>
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --panel: #ece8dd;
+    --ink: #201f1c;
+    --ink-dim: #59564c;
+    --rule: #d8d3c4;
+    --accent: #3949ab;
+    --accent-ink: #ffffff;
+    --accent-soft: #e4e6f7;
+    --good: #2f7a4f;
+    --good-soft: #e2f0e6;
+    --bad: #a34a26;
+    --bad-soft: #f5e6dd;
+    --warn: #9a7b1f;
+    --warn-soft: #f5edd8;
+    --code-bg: #1c1b26;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a;
+    --panel: #1e1d24;
+    --ink: #eae8e2;
+    --ink-dim: #a5a196;
+    --rule: #34323c;
+    --accent: #8fa3ff;
+    --accent-ink: #12131f;
+    --accent-soft: #23264a;
+    --good: #7fd9a4;
+    --good-soft: #1c3327;
+    --bad: #e8a685;
+    --bad-soft: #3a2620;
+    --warn: #e8ca7f;
+    --warn-soft: #3a3220;
+    --code-bg: #0e0d13;
+    --code-ink: #e8e6f0;
+    --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a;
+      --panel: #1e1d24;
+      --ink: #eae8e2;
+      --ink-dim: #a5a196;
+      --rule: #34323c;
+      --accent: #8fa3ff;
+      --accent-ink: #12131f;
+      --accent-soft: #23264a;
+      --good: #7fd9a4;
+      --good-soft: #1c3327;
+      --bad: #e8a685;
+      --bad-soft: #3a2620;
+      --warn: #e8ca7f;
+      --warn-soft: #3a3220;
+      --code-bg: #0e0d13;
+      --code-ink: #e8e6f0;
+      --code-accent: #8fa3ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: var(--accent); }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 2.3rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; }
+  h2 {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 2.6rem 0 0.9rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.5rem; }
+  p { margin: 0.7rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.6rem 0; padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; max-width: 62ch; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { border-radius: 10px; padding: 1.1rem 1.2rem; border: 1px solid var(--rule); }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+  .card ul { padding-left: 1.1rem; }
+
+  .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  thead th { background: var(--panel); font-family: ui-monospace, monospace; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt { font-weight: 700; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); margin-top: 0.9rem; }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.2rem 0;
+    font-size: 0.95rem;
+  }
+  .callout.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 4 · Proyecto 1 — Competencia MLP</div>
+  <h1>Iteraciones e hiperparámetros</h1>
+  <p class="subtitle">
+    8 configuraciones, una variable a la vez respecto al baseline — y el baseline
+    resultó ganar, lo cual es en sí mismo un hallazgo sobre este dataset.
+  </p>
+
+  <h2>Qué se hizo</h2>
+  <p>Se corrieron 8 configs variando profundidad, anchura, dropout, weight_decay,
+  batchnorm y learning rate, todas con el mismo split train/val y seed. Resultados
+  ordenados por <code>val_rmse_log</code>:</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Config</th><th>Arquitectura</th><th>Dropout</th><th>WD</th><th>BN</th><th>lr</th><th>Épocas</th><th>Train RMSE (log)</th><th>Val RMSE (log)</th><th>Val RMSE (USD)</th></tr></thead>
+      <tbody>
+        <tr><td>C1_baseline</td><td>64→32</td><td>0.0</td><td>0</td><td>No</td><td>1e-3</td><td class="num">194</td><td class="num">0.063</td><td class="num">0.204</td><td class="num">$41,401</td></tr>
+        <tr><td>C2_mas_capas</td><td>128→64→32</td><td>0.0</td><td>0</td><td>No</td><td>1e-3</td><td class="num">93</td><td class="num">0.070</td><td class="num">0.237</td><td class="num">$73,019</td></tr>
+        <tr><td>C5_weight_decay</td><td>128→64</td><td>0.0</td><td>1e-4</td><td>No</td><td>1e-3</td><td class="num">62</td><td class="num">0.109</td><td class="num">0.255</td><td class="num">$89,568</td></tr>
+        <tr><td>C7_dropout_wd</td><td>128→64</td><td>0.2</td><td>1e-4</td><td>No</td><td>1e-3</td><td class="num">64</td><td class="num">0.277</td><td class="num">0.267</td><td class="num">$47,996</td></tr>
+        <tr><td>C8_lr_bajo</td><td>128→64</td><td>0.2</td><td>1e-4</td><td>No</td><td>3e-4</td><td class="num">64</td><td class="num">0.267</td><td class="num">0.300</td><td class="num">$63,974</td></tr>
+        <tr><td>C3_mas_ancho</td><td>256→128</td><td>0.0</td><td>0</td><td>No</td><td>1e-3</td><td class="num">66</td><td class="num">0.095</td><td class="num">0.320</td><td class="num">$340,645</td></tr>
+        <tr><td>C4_dropout</td><td>128→64</td><td>0.3</td><td>0</td><td>No</td><td>1e-3</td><td class="num">40</td><td class="num">0.497</td><td class="num">0.328</td><td class="num">$69,205</td></tr>
+        <tr><td>C6_batchnorm</td><td>128→64</td><td>0.0</td><td>0</td><td>Sí</td><td>1e-3</td><td class="num">49</td><td class="num">0.356</td><td class="num">0.522</td><td class="num">$175,697</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><strong>C1 (baseline, 64→32, sin regularización) ganó</strong>, con el train RMSE
+  más bajo de todos (0.063) pero también el val RMSE más bajo (0.204) — sin el mayor
+  gap train/val (0.140), que en cambio corresponde a C3 (0.226, la arquitectura más
+  ancha). Este dataset (≈930 filas de train efectivas, 223 features tras el
+  preprocesamiento) favorece un modelo pequeño.</p>
+
+  <h2>Decisiones y por qué</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros del enfoque</h3>
+      <ul>
+        <li>Diseño "una variable a la vez" (todas las configs parten de un baseline
+        común, cada una cambia un solo eje) permite atribuir el efecto de cada
+        cambio directamente, en vez de un grid search opaco.</li>
+        <li>El <code>gap</code> (val − train, en log) como columna explícita hace
+        visible el overfitting sin tener que releer las curvas de cada config.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Contras / límites</h3>
+      <ul>
+        <li>Un solo split 80/20 hace que el ranking entre configs cercanas
+        (C7 vs C8, ambas ~0.27–0.30) tenga ruido de muestreo no cuantificado — un
+        k-fold daría intervalos de confianza, mencionado como trabajo futuro.</li>
+        <li>El sweep no cubrió combinaciones (p. ej. ancho+dropout simultáneo) por
+        presupuesto de tiempo — se priorizó cobertura de ejes individuales.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Evidencia de over/underfitting encontrada</h2>
+  <p><strong>C3 (más ancho, sin regularización)</strong> es el caso más claro de
+  overfitting: train RMSE bajo (0.095, casi tan bueno como el baseline) pero val RMSE
+  el peor entre las variantes "limpias" (0.320), y un <strong>val RMSE en dólares
+  desproporcionado ($340,645)</strong> — 256→128 sin dropout/weight_decay memoriza
+  patrones espurios de las ~930 filas de train que no generalizan, y falla
+  catastróficamente en al menos una casa de validación al invertir el log. <strong>C6
+  (batchnorm)</strong> resultó ser la peor config en general (val RMSE log 0.522): con
+  <code>batch_size=32</code> sobre un dataset chico, las estadísticas de batch que
+  normaliza <code>BatchNorm1d</code> son ruidosas, introduciendo inestabilidad en vez
+  de ayudar — consistente con la literatura que recomienda batchnorm para datasets
+  grandes con batches más estables.</p>
+
+  <h2>Investigación detallada: por qué el modelo más simple ganó</h2>
+  <p>Con 223 features y ~930 filas de entrenamiento, la razón parámetros/muestras ya
+  es alta incluso con el MLP más chico del sweep (64→32 ≈ 16.5k parámetros). Añadir
+  capacidad (más ancho, más capas) sin compensar con regularización solo empeora esa
+  razón. El dropout/weight_decay sí deberían ayudar en teoría, pero en este sweep
+  concreto (C4, C5, C7) todos quedaron por encima del baseline — posible señal de que
+  el early stopping por sí solo ya estaba regularizando lo suficiente en C1, y que
+  agregar dropout encima solo le restó capacidad útil al modelo antes de que
+  aprendiera la señal (ver `train_rmse_log` de C4: 0.497, muy por encima de las demás
+  — subentrenado en las épocas que corrió antes de activar early stopping).</p>
+
+  <h2>Impedimentos encontrados</h2>
+  <p>Ninguno; las 8 configs corrieron en &lt;30s totales en CPU.</p>
+
+  <h2>Qué más se podría hacer</h2>
+  <ul>
+    <li><strong>K-fold cross-validation</strong> sobre el baseline y los 2-3
+    candidatos más cercanos, para confirmar que C1 gana de forma robusta y no por
+    ruido del split.</li>
+    <li><strong>Batch size mayor</strong> para C6 (batchnorm) antes de descartarlo
+    definitivamente — el problema observado puede ser específico de
+    <code>batch_size=32</code>.</li>
+  </ul>
+
+  <h2>Glosario</h2>
+  <dl class="glossary">
+    <dt>Gap train/val</dt>
+    <dd>Diferencia entre el RMSE de validación y el de entrenamiento; valores altos
+    indican que el modelo generaliza peor de lo que memoriza train (overfitting).</dd>
+
+    <dt>Batch normalization</dt>
+    <dd>Normaliza activaciones usando media/varianza del mini-batch actual;
+    con batches muy chicos esas estadísticas son ruidosas y pueden desestabilizar el
+    entrenamiento en vez de acelerarlo.</dd>
+  </dl>
+
+  <footer>
+    <span>Proyecto 1 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 4 de 6</span>
+  </footer>
+</div>
