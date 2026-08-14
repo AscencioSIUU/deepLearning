@@ -111,9 +111,13 @@ def train_model(model, train_loader, val_loader, lr=1e-3, weight_decay=0.0,
 
 
 def cross_validate_config(X, y, build_pipeline_fn, config, k=5, seed=42,
-                           epochs=200, patience=20, batch_size=32):
+                           epochs=200, patience=20, batch_size=32, return_models=False):
     """K-fold CV de una config: reajusta el preprocessing pipeline en cada fold
-    (evita fuga de datos) y entrena desde cero. Devuelve RMSE log/USD por fold."""
+    (evita fuga de datos) y entrena desde cero. Devuelve RMSE log/USD por fold.
+
+    Con return_models=True, cada fold_result incluye también su (pipeline, model)
+    ya entrenados -- los 5 folds forman un ensemble natural (cada uno vio ~80% de
+    los datos, validado contra el 20% restante) que se usa como modelo final."""
     from sklearn.model_selection import KFold
 
     X = X.reset_index(drop=True)
@@ -130,20 +134,36 @@ def cross_validate_config(X, y, build_pipeline_fn, config, k=5, seed=42,
         X_va_t = pipe.transform(X_va)
         train_loader, val_loader = make_loaders(X_tr_t, y_tr, X_va_t, y_va, batch_size=batch_size)
 
-        torch.manual_seed(seed)
+        torch.manual_seed(seed + fold)
         model = MLP(n_features=X_tr_t.shape[1], hidden_sizes=config["hidden_sizes"],
                     dropout=config["dropout"], batchnorm=config["batchnorm"])
         model, _, val_rmse_log = train_model(
             model, train_loader, val_loader, lr=config["lr"],
             weight_decay=config["weight_decay"], epochs=epochs, patience=patience,
         )
-        fold_results.append({
+        result = {
             "fold": fold,
             "val_rmse_log": val_rmse_log,
             "val_rmse_usd": rmse_dollars(model, val_loader),
-        })
+        }
+        if return_models:
+            result["pipeline"] = pipe
+            result["model"] = model
+        fold_results.append(result)
 
     return fold_results
+
+
+def ensemble_predict_log(fold_results, X_new):
+    """Promedia las predicciones (en log-espacio) de los modelos de un ensemble
+    de CV sobre datos nuevos -- cada fold aplica su propio pipeline ya ajustado."""
+    preds = []
+    for r in fold_results:
+        X_t = r["pipeline"].transform(X_new)
+        r["model"].eval()
+        with torch.no_grad():
+            preds.append(r["model"](torch.tensor(X_t, dtype=torch.float32)).numpy())
+    return np.mean(preds, axis=0)
 
 
 if __name__ == "__main__":

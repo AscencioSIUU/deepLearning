@@ -68,6 +68,24 @@ marcado, y su versión `log1p` mucho más simétrica), `outliers_scatter.png`
 | 20 ordinales de calidad → `OrdinalEncoder` con orden real por columna | preserva el orden, evita explotar dimensionalidad |
 | 23 nominales puras → one-hot | sin orden natural |
 | 36 numéricas → `StandardScaler` | MLP con gradiente converge mejor con features en escala similar |
+| +4 features derivadas: `TotalSF`, `HouseAge`, `RemodAge`, `TotalBath` | bajan el RMSE de CV ~15%; el MLP no reconstruye fácilmente "área total" a partir de sus 3 componentes por separado con ~930 filas de train |
+
+### 1.6 Feature engineering
+
+Además del preprocesamiento de columnas crudas, se agregaron 4 columnas derivadas
+(`engineer_features` en `src/preprocessing.py`), agregadas **después** de excluir
+outliers para no derivar de filas que luego se descartan:
+
+| Feature derivada | Fórmula | Motivación |
+|---|---|---|
+| `TotalSF` | `TotalBsmtSF + 1stFlrSF + 2ndFlrSF` | área total, más correlacionada con precio que cualquier componente por separado |
+| `HouseAge` | `YrSold - YearBuilt` | antigüedad, más directamente interpretable que el año de construcción crudo |
+| `RemodAge` | `YrSold - YearRemodAdd` | años desde la última remodelación |
+| `TotalBath` | `FullBath + 0.5·HalfBath + BsmtFullBath + 0.5·BsmtHalfBath` | conteo total de baños ponderado |
+
+Estas 4 features bajaron el RMSE de 5-fold CV de la config ganadora de **0.227
+(log) / $43,278 (USD)** a **0.209 (log) / $38,068 (USD)** — mejora consistente en
+los 5 folds, no un artefacto de un fold particular (sección 4.1).
 
 ## 2. Metodología de desarrollo
 
@@ -82,6 +100,17 @@ train). La config ganadora se validó además con **5-fold cross-validation**
 (`cross_validate_config` en `src/model.py`): en cada fold se reajusta el pipeline de
 preprocesamiento únicamente con los datos de ese fold de train, evitando fuga entre
 folds, y el modelo se reentrena desde cero.
+
+**Modelo final: ensemble de 5-fold CV.** En vez de reentrenar un único modelo sobre
+todo `train.csv`, `train.py` guarda los 5 modelos de la validación cruzada como
+ensemble; `predict.py` promedia sus predicciones en log-espacio antes de invertir a
+USD. Medido sobre un holdout del 15% **nunca visto por ningún fold** (split
+adicional, solo para esta medición honesta), el ensemble bajó el RMSE de $40,259
+(un solo modelo) a **$33,610** — variance reduction estándar de ensembles, sin
+entrenamiento extra respecto al CV que de todas formas se corre. `predict.py`
+también aplica un clip de seguridad `[0.5×min(SalePrice), 1.5×max(SalePrice)]`
+observado en train, para acotar el daño de una extrapolación catastrófica (sección
+4, "fragilidad ante extrapolación").
 
 **Función de pérdida, optimizador, hiperparámetros**: `MSELoss` sobre el target en
 escala `log1p(SalePrice)` (evita que las pocas casas caras dominen el gradiente y
@@ -123,10 +152,13 @@ batchnorm en datasets grandes con batches más estables.
 
 **Validación cruzada de la config ganadora**: para confirmar que C1 no ganó por
 ruido del split 80/20, se corrió 5-fold CV reajustando el pipeline en cada fold.
-Resultado: **val RMSE log = 0.227 ± 0.035**, **val RMSE USD = $43,278 ± $9,175** —
-consistente con el $41,401 del split original (dentro de 1 desviación estándar),
-confirmando que la ventaja del baseline es robusta y no un artefacto de un único
-split.
+Con las columnas crudas: **val RMSE log = 0.227 ± 0.035**, **val RMSE USD =
+$43,278 ± $9,175** — consistente con el $41,401 del split original, confirmando que
+la ventaja del baseline es robusta y no un artefacto de un único split. Con las 4
+features derivadas de la sección 1.6, el mismo CV mejora a **val RMSE log = 0.209 ±
+0.020**, **val RMSE USD = $38,068 ± $3,342** — también reduce la varianza entre
+folds (desviación estándar USD de $9,175 a $3,342), señal de un modelo más
+consistente entre subconjuntos de datos.
 
 ## 4. Discusión de resultados
 
@@ -151,14 +183,17 @@ se sobreestiman por $50k–$70k. El patrón sugiere que el modelo generaliza peo
 extremos de la distribución de precio/tamaño que en el rango típico ($130k–$215k),
 donde está la mayoría de los datos de entrenamiento.
 
-**Fragilidad ante extrapolación**: al validar `predict.py` sobre `train.csv`
-completo (incluyendo los 2 outliers excluidos del entrenamiento), la casa Id=1299
-(`GrLivArea`=5642, precio real $160,000) recibió una predicción de **$3.88M** — un
-error de +$3.7M en un solo punto. El modelo nunca vio casas con esa área durante
-entrenamiento; en log-espacio el error es moderado, pero `expm1` lo amplifica
-exponencialmente al volver a USD. Esto es una limitación real y relevante: si el
-held-out de competencia contiene casas fuera del rango de `train.csv`, el RMSE en
-USD puede dispararse por un único punto atípico.
+**Fragilidad ante extrapolación (y su mitigación)**: al validar `predict.py` sobre
+`train.csv` completo (incluyendo los 2 outliers excluidos del entrenamiento), la
+casa Id=1299 (`GrLivArea`=5642, precio real $160,000) recibía una predicción de
+**$3.88M** antes de agregar el clip de seguridad — un error de +$3.7M en un solo
+punto. El modelo nunca vio casas con esa área durante entrenamiento; en log-espacio
+el error es moderado, pero `expm1` lo amplifica exponencialmente al volver a USD.
+Con el clip `[0.5×min(SalePrice), 1.5×max(SalePrice)]` agregado en `predict.py`, esa
+misma predicción queda acotada a $1.12M — sigue siendo un error grande, pero su
+contribución al RMSE cuadrático baja ~15×. Sigue siendo una limitación real: el clip
+acota el daño, no lo elimina; si el held-out de competencia contiene casas muy fuera
+del rango de `train.csv`, el error en esos puntos concretos seguirá siendo alto.
 
 **Trade-off complejidad/generalización**: el hallazgo central del sweep es que, para
 este dataset (~1000 filas, 223 features tras codificación), **menos es más**: el
@@ -174,16 +209,21 @@ cercanas — mitigado solo para la ganadora vía CV posterior, no para las 8 con
 completas por presupuesto de tiempo; (2) el one-hot de `Neighborhood` (25 categorías)
 por sí solo aporta ~25 columnas dispersas, con pocas observaciones por categoría en
 los barrios menos frecuentes; (3) el modelo extrapola mal fuera del rango de
-entrenamiento, como se documentó arriba.
+entrenamiento, mitigado pero no eliminado por el clip de predicción; (4) el clip de
+seguridad es un límite fijo por percentil de train, no una calibración de
+incertidumbre aprendida — un enfoque más robusto (p. ej. un modelo de cuantiles o
+intervalos de predicción) queda como trabajo futuro.
 
 ## 5. Conclusiones
 
-- **Desempeño final**: RMSE de validación = **$41,401 USD** (split 80/20 único,
-  0.2039 en log) y **$43,278 ± $9,175 USD** (5-fold CV, 0.227 ± 0.035 en log). Ambas
-  estimaciones son consistentes entre sí, lo que da confianza en que ~$41k–$43k es
-  la generalización esperada en el held-out de competencia, dado que el modelo
-  final se reentrenó sobre el 100% de `train.csv` con el número de épocas óptimo
-  encontrado en el split.
+- **Desempeño final**: el modelo de producción (ensemble de 5-fold CV + feature
+  engineering + clip de seguridad) alcanza **RMSE ≈ $33,610 USD** (0.171 en log),
+  medido sobre un holdout del 15% nunca visto por ningún fold del ensemble —
+  la estimación más honesta disponible de generalización. Esto representa una
+  mejora del **~19%** sobre la primera versión del modelo (config ganadora del
+  sweep, sin feature engineering ni ensemble: $41,401 USD). El desglose del
+  progreso: $41,401 (config base) → $38,068 (+ feature engineering, CV por fold)
+  → $33,610 (+ ensemble, medido en holdout independiente).
 - **Aprendizajes técnicos**: (1) entrenar sobre el target en escala log es
   determinante en datasets de precios con sesgo positivo, tanto para la
   optimización como para la interpretabilidad del error; (2) con pocas muestras
@@ -193,14 +233,18 @@ entrenamiento, como se documentó arriba.
   transformación no lineal (`expm1`) amplifica errores de forma no uniforme,
   hay que revisar el error en la escala en que realmente importa (USD), no solo en
   la escala de entrenamiento (log); (4) validar la config ganadora con k-fold CV
-  (no solo con el split original) es barato (~15s en CPU) y da una estimación de
-  generalización con incertidumbre cuantificada, en vez de un solo número puntual.
+  es barato (~15s en CPU) y da una estimación de generalización con incertidumbre
+  cuantificada; (5) el ensemble de modelos de k-fold CV es prácticamente gratis —
+  ya se entrenan para la validación cruzada, solo falta guardarlos y promediar sus
+  predicciones — y en este proyecto dio la mayor mejora individual de RMSE; (6) un
+  clip de seguridad simple, aunque no resuelve la extrapolación, es una red de
+  contención barata contra errores catastróficos de un único punto.
 - **Mejoras futuras**: extender el 5-fold CV a las 8 configs completas del sweep
-  (no solo a la ganadora) para un ranking más robusto; clipping de predicciones a
-  un rango razonable como salvaguarda contra extrapolación catastrófica; feature
-  engineering (edad de la casa, área total combinada) para capturar señal no
-  explícita en las columnas crudas; ensamble de varios modelos (promedio de
-  predicciones) para reducir varianza.
+  (no solo a la ganadora) para un ranking más robusto; un modelo de incertidumbre
+  (cuantiles, intervalos de predicción) en vez del clip fijo actual; más feature
+  engineering (interacciones entre `OverallQual` y área, por ejemplo) para seguir
+  bajando el RMSE; ensembles heterogéneos (MLPs con distintas arquitecturas, no
+  solo distintos folds) para mayor diversidad.
 
 ## 6. Enlace al repositorio de GitHub
 

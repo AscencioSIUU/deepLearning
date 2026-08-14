@@ -12,9 +12,9 @@ proy-1-competencia/
 ├── build_nb.py            # genera proy1_mlp.ipynb (no es entregable)
 ├── proy1_mlp.ipynb        # EDA, preprocesamiento, modelo, iteraciones
 ├── src/preprocessing.py   # ColumnTransformer reutilizado por notebook y predict.py
-├── train.py                # entrena el modelo final, guarda artifacts/
-├── predict.py              # carga artifacts/, predice sobre un CSV nuevo, calcula RMSE
-├── artifacts/              # model.pt, pipeline.pkl, meta.json (generados por train.py)
+├── train.py                # corre 5-fold CV, guarda el ensemble en artifacts/
+├── predict.py              # carga el ensemble, predice sobre un CSV nuevo, calcula RMSE
+├── artifacts/              # ensemble.pkl (5x pipeline+modelo), meta.json (generados por train.py)
 ├── docs/                   # explicadores HTML por batch + figuras
 └── reporte.md / reporte.pdf
 ```

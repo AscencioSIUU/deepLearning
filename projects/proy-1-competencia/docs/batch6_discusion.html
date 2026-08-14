@@ -186,11 +186,11 @@
     <table>
       <thead><tr><th>Métrica de discusión</th><th>Valor</th></tr></thead>
       <tbody>
-        <tr><td>RMSE de validación (generalización, split 80/20)</td><td class="num">$41,401 (log 0.2039)</td></tr>
-        <tr><td>RMSE sobre train limpio (optimista, no generalización)</td><td class="num">$13,037</td></tr>
-        <tr><td>Sesgo medio de residuos</td><td class="num">−$5,497 (subestima levemente)</td></tr>
-        <tr><td>Desviación estándar de residuos</td><td class="num">$11,827</td></tr>
-        <tr><td>Mayor error individual (train)</td><td class="num">+$122,146 (casa OldTown $475k → $597k)</td></tr>
+        <tr><td>RMSE config base (split 80/20, sin FE ni ensemble)</td><td class="num">$41,401 (log 0.2039)</td></tr>
+        <tr><td>RMSE final: ensemble + feature engineering (holdout independiente)</td><td class="num"><strong>$33,610</strong> (log 0.171)</td></tr>
+        <tr><td>Sesgo medio de residuos (modelo base, train)</td><td class="num">−$5,497 (subestima levemente)</td></tr>
+        <tr><td>Desviación estándar de residuos (modelo base, train)</td><td class="num">$11,827</td></tr>
+        <tr><td>Mayor error individual (train, modelo base)</td><td class="num">+$122,146 (casa OldTown $475k → $597k)</td></tr>
       </tbody>
     </table>
   </div>
@@ -236,14 +236,23 @@
   <p>Ninguno; <code>pandoc reporte.md -o reporte.pdf --pdf-engine=xelatex</code>
   renderizó sin errores en el primer intento.</p>
 
+  <div class="callout">
+    <strong>Actualización posterior:</strong> tanto el 5-fold CV como el clipping de
+    predicciones, listados abajo como trabajo futuro al cerrar este batch, se
+    implementaron después junto con feature engineering y un ensemble de los 5
+    modelos de CV — bajando el RMSE final de $41,401 a <strong>$33,610</strong>
+    (~19%). Detalle en <code>docs/batch5_final.html</code> (actualizado) y
+    <code>reporte.md</code>, sección 1.6 y 2.
+  </div>
+
   <h2>Qué más se podría hacer</h2>
   <ul>
-    <li><strong>K-fold cross-validation</strong> para confirmar que el ranking de
-    configs (y en particular la victoria del baseline) es robusto y no un artefacto
-    del split 80/20 específico usado.</li>
-    <li><strong>Clipping de predicciones</strong> como salvaguarda contra el caso de
-    extrapolación catastrófica documentado en el Batch 5, antes de someter
-    predicciones sobre el held-out real.</li>
+    <li><strong>Modelo de incertidumbre</strong> (cuantiles, intervalos de
+    predicción) en vez del clip fijo actual, para acotar la extrapolación de forma
+    más principiada.</li>
+    <li><strong>Ensembles heterogéneos</strong> (arquitecturas distintas, no solo
+    distintos folds de la misma config) para mayor diversidad y potencial mejora
+    adicional de RMSE.</li>
   </ul>
 
   <h2>Glosario</h2>

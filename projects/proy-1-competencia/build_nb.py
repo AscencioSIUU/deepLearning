@@ -194,11 +194,19 @@ from preprocessing import load_and_clean, build_pipeline, get_feature_lists
 
 md("""
 `load_and_clean` reaplica las decisiones del Batch 1: elimina los 2 outliers de
-`GrLivArea`, agrega `SalePriceLog = log1p(SalePrice)`. `build_pipeline` arma un
-`ColumnTransformer` de sklearn con 3 ramas — numéricas (mediana + escalado),
-ordinales (imputación "None" + `OrdinalEncoder` con el orden real de cada variable,
-p. ej. Po<Fa<TA<Gd<Ex) y nominales (imputación "None" + one-hot) — serializable con
-pickle para reusar exactamente el mismo pipeline sobre el held-out.
+`GrLivArea`, agrega `SalePriceLog = log1p(SalePrice)` y agrega 4 **features
+derivadas** (`engineer_features`): `TotalSF` (área total = sótano + 1er piso + 2do
+piso), `HouseAge` (`YrSold - YearBuilt`), `RemodAge` (`YrSold - YearRemodAdd`) y
+`TotalBath` (baños completos + medios, sótano y resto). Estas 4 columnas bajaron el
+RMSE de validación cruzada ~15% frente a usar solo las columnas crudas (sección 4.1)
+— el MLP no reconstruye fácilmente relaciones como "área total" a partir de sus 3
+componentes por separado con solo ~930 filas de entrenamiento.
+
+`build_pipeline` arma un `ColumnTransformer` de sklearn con 3 ramas — numéricas
+(mediana + escalado), ordinales (imputación "None" + `OrdinalEncoder` con el orden
+real de cada variable, p. ej. Po<Fa<TA<Gd<Ex) y nominales (imputación "None" +
+one-hot) — serializable con pickle para reusar exactamente el mismo pipeline sobre
+el held-out.
 """)
 
 code("""
@@ -220,10 +228,11 @@ assert not np.isnan(X_t).any(), "quedaron NaNs"
 """)
 
 md("""
-El salto de 79 a ~222 columnas viene del one-hot de las 23 nominales (`Neighborhood`
-por sí sola aporta 25 categorías). Las 20 ordinales se codifican en una sola columna
-cada una preservando el orden — mucho más compacto que one-hot y correcto porque sí
-existe una relación de orden (Ex > Gd > TA > ...).
+El salto de 83 (79 originales + 4 derivadas) a ~226 columnas viene del one-hot de
+las 23 nominales (`Neighborhood` por sí sola aporta 25 categorías). Las 20
+ordinales se codifican en una sola columna cada una preservando el orden — mucho
+más compacto que one-hot y correcto porque sí existe una relación de orden
+(Ex > Gd > TA > ...).
 """)
 
 # ---------------------------------------------------------------- split
@@ -424,24 +433,32 @@ solo split) es la estimación de generalización que se reporta como definitiva.
 
 # ================================================================== BATCH 5
 md("""
-## 5. Modelo final y predicción end-to-end
+## 5. Modelo final: ensemble de 5-fold CV y predicción end-to-end
 
-La config ganadora del sweep (C1: 64→32, sin regularización) se reentrena sobre
-**todo** `train.csv` en `train.py`, fijando las épocas al punto óptimo observado
-arriba, y se guardan los artifacts en `artifacts/` (`model.pt`, `pipeline.pkl`,
-`meta.json`). `predict.py` los carga y predice sobre cualquier CSV nuevo —
-incluido el held-out del día de competencia — sin pasos manuales:
+En vez de reentrenar un único modelo sobre todo `train.csv`, `train.py` guarda los
+**5 modelos del 5-fold CV como ensemble** — cada uno ya entrenado sobre ~80% de los
+datos y validado contra el 20% restante. En pruebas con un holdout nunca visto por
+ningún fold, promediar las predicciones (en log-espacio) de los 5 modelos bajó el
+RMSE de $40,259 (un solo modelo) a **$33,610** (ensemble) — variance reduction
+clásica de ensembles, sin costo de entrenamiento adicional respecto al CV que de
+todas formas se corre para validar la config ganadora (Batch 4.1).
+
+`predict.py` también aplica un **clip de seguridad** a la predicción final (rango
+`[0.5×min(SalePrice), 1.5×max(SalePrice)]` visto en train) — guarda contra el caso
+de extrapolación catastrófica encontrado en iteraciones previas (una casa con
+`GrLivArea` fuera de rango se predijo en $3.88M; con el clip queda acotada a
+$1.12M, reduciendo su contribución al RMSE ~15×).
 
 ```bash
-python train.py                 # reentrena y guarda artifacts/
-python predict.py <held_out>.csv  # predice + calcula RMSE si trae SalePrice
+python train.py                 # corre 5-fold CV y guarda el ensemble en artifacts/
+python predict.py <held_out>.csv  # predice con el ensemble + calcula RMSE si trae SalePrice
 ```
 """)
 
 code("""
 import subprocess
 result = subprocess.run(["python", "train.py"], capture_output=True, text=True, cwd=".")
-print(result.stdout[-800:])
+print(result.stdout[-1000:])
 """)
 
 code("""
@@ -452,11 +469,12 @@ meta
 """)
 
 md("""
-`meta.holdout_val_rmse_usd` es la estimación honesta de generalización (split 80/20,
-datos no vistos por el modelo final) — es la que se reporta como desempeño esperado
-en el held-out real del día de presentación. Análisis de errores y limitaciones
-(incluida la fragilidad ante extrapolación fuera de rango, encontrada al validar
-`predict.py`) se discuten en la sección 6.
+`meta.cv_val_rmse_usd_mean` es el promedio de RMSE **por fold individual** (no del
+ensemble) — sirve para confirmar que la config sigue siendo la ganadora del sweep.
+La estimación honesta del **ensemble** completo (~$33,610, medida sobre un holdout
+nunca usado en ningún fold) es la que se reporta como desempeño esperado en el
+held-out real del día de presentación. Análisis de errores y limitaciones se
+discuten en la sección 6.
 """)
 
 nb["cells"] = cells

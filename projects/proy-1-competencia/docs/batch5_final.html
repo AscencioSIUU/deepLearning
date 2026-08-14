@@ -168,33 +168,33 @@
 
 <div class="wrap">
   <div class="eyebrow">Batch 5 · Proyecto 1 — Competencia MLP</div>
-  <h1>Modelo final y predicción</h1>
+  <h1>Modelo final: ensemble + feature engineering</h1>
   <p class="subtitle">
-    <code>train.py</code> guarda pesos + pipeline; <code>predict.py</code> los carga y
-    predice sobre cualquier CSV nuevo sin pasos manuales — así se llega listo al
-    held-out del día de presentación.
+    Reemplazamos el modelo único por un ensemble de 5-fold CV, agregamos 4 features
+    derivadas y un clip de seguridad — RMSE honesto de <strong>$41,401 → $33,610</strong>
+    (~19% mejor), medido sobre un holdout que ningún modelo del ensemble vio nunca.
   </p>
 
   <h2>Qué se hizo</h2>
-  <p><code>train.py</code> reentrena la config ganadora del sweep (C1: 64→32, sin
-  regularización) sobre <strong>todo</strong> <code>train.csv</code> (más datos
-  disponibles = mejor generalización esperada en el held-out real), fijando el número
-  de épocas al punto óptimo observado en el split 80/20 interno. Guarda
-  <code>artifacts/model.pt</code>, <code>artifacts/pipeline.pkl</code> y
-  <code>artifacts/meta.json</code>. <code>predict.py</code> carga esos 3 artifacts y
-  predice sobre un CSV nuevo, invirtiendo <code>expm1</code> para devolver USD.</p>
+  <p>Se identificaron 3 mejoras concretas para la competencia: (1) <strong>feature
+  engineering</strong> (<code>TotalSF</code>, <code>HouseAge</code>,
+  <code>RemodAge</code>, <code>TotalBath</code> en
+  <code>src/preprocessing.py</code>); (2) en vez de reentrenar un único modelo sobre
+  todo <code>train.csv</code>, <code>train.py</code> guarda los <strong>5 modelos
+  del 5-fold CV como ensemble</strong> (<code>artifacts/ensemble.pkl</code>,
+  serializado con <code>pickle</code>) — cada uno entrenado sobre ~80% de los datos y
+  validado contra el 20% restante; (3) <code>predict.py</code> promedia las 5
+  predicciones en log-espacio y aplica un <strong>clip de seguridad</strong> antes de
+  invertir a USD.</p>
 
   <div class="table-scroll">
     <table>
-      <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+      <thead><tr><th>Etapa</th><th>RMSE (log)</th><th>RMSE (USD)</th></tr></thead>
       <tbody>
-        <tr><td>Config final</td><td>MLP 64→32, sin dropout/weight_decay/batchnorm</td></tr>
-        <tr><td>Épocas (reentreno con todo train)</td><td class="num">174</td></tr>
-        <tr><td>Val RMSE interno (log), split 80/20</td><td class="num">0.2039</td></tr>
-        <tr><td>Val RMSE interno (USD), split 80/20</td><td class="num">$41,401</td></tr>
-        <tr><td>Val RMSE 5-fold CV (log)</td><td class="num">0.227 ± 0.035</td></tr>
-        <tr><td>Val RMSE 5-fold CV (USD)</td><td class="num">$43,278 ± $9,175</td></tr>
-        <tr><td>Sanity check: predict.py sobre train.csv completo</td><td class="num">RMSE $112,185 (log 0.1284)</td></tr>
+        <tr><td>Config base (sweep, Batch 4, columnas crudas)</td><td class="num">0.204</td><td class="num">$41,401</td></tr>
+        <tr><td>+ feature engineering (5-fold CV por fold)</td><td class="num">0.209 ± 0.020</td><td class="num">$38,068 ± $3,342</td></tr>
+        <tr><td>+ ensemble (holdout 15% nunca visto por ningún fold)</td><td class="num"><strong>0.171</strong></td><td class="num"><strong>$33,610</strong></td></tr>
+        <tr><td>Un solo modelo, mismo holdout (para comparar)</td><td class="num">—</td><td class="num">$40,259</td></tr>
       </tbody>
     </table>
   </div>
@@ -204,70 +204,79 @@
     <div class="card good">
       <h3>Pros del enfoque</h3>
       <ul>
-        <li>El pipeline serializado (<code>pickle</code>) se ajusta una sola vez y se
-        reutiliza en <code>predict.py</code> — elimina por construcción el riesgo de
-        que entrenamiento y predicción usen transformaciones distintas (recomendación
-        #2 del enunciado).</li>
-        <li><code>meta.json</code> guarda la arquitectura exacta usada, así
-        <code>predict.py</code> reconstruye el <code>MLP</code> con los mismos
-        argumentos sin hardcodearlos dos veces.</li>
-        <li>El número de épocas del reentreno final se fija al punto óptimo ya
-        observado (no se usa early stopping con datos que ya no tienen validación
-        separada) — evita entrenar "a ciegas" sobre el 100% de los datos.</li>
+        <li>El ensemble es prácticamente gratis: los 5 modelos <strong>ya se
+        entrenan</strong> para la validación cruzada que de todas formas se corre
+        para confirmar la config ganadora — solo hubo que guardarlos en vez de
+        descartarlos.</li>
+        <li>Cada fold guarda <strong>su propio pipeline ajustado</strong> junto a su
+        modelo (no uno compartido) — necesario porque el ancho del one-hot puede
+        variar levemente entre folds (categorías raras de <code>Neighborhood</code>
+        ausentes en algún 80% de train), y <code>predict.py</code> lo maneja
+        infiriendo el tamaño de entrada desde el propio <code>state_dict</code> en
+        vez de asumir un ancho fijo.</li>
+        <li>El clip de seguridad es una sola línea (<code>np.clip</code>) con un
+        rango derivado de datos reales de train, no un número mágico.</li>
       </ul>
     </div>
     <div class="card bad">
       <h3>Contras / límites</h3>
       <ul>
-        <li>El "sanity check" de <code>predict.py</code> sobre <code>train.csv</code>
-        completo <strong>no es una medida honesta de generalización</strong> (el
-        modelo ya vio esos datos) — solo confirma que el pipeline end-to-end corre sin
-        error. La métrica real de generalización es el RMSE del split 80/20 guardado
-        en <code>meta.json</code> ($41,401).</li>
-        <li>El RMSE en USD del sanity check ($112,185) es mucho peor que el log RMSE
-        sugiere, por un motivo concreto: ver la sección siguiente.</li>
+        <li>El clip <strong>acota el daño, no lo elimina</strong>: la casa Id=1299
+        pasó de predecirse en $3.88M a $1.12M (clip superior) — sigue siendo un
+        error grande en términos absolutos, solo deja de dominar el RMSE total.</li>
+        <li>El ensemble multiplica por 5 el costo de inferencia (5 forward passes
+        en vez de 1) — irrelevante en este dataset (milisegundos), pero no
+        escalaría igual de gratis a un modelo mucho más grande.</li>
       </ul>
     </div>
   </div>
 
-  <h2>Investigación detallada: por qué el sanity check en USD se dispara</h2>
-  <p>Al predecir sobre <code>train.csv</code> completo (incluyendo los 2 outliers de
-  <code>GrLivArea</code>&gt;4000 identificados en el EDA), la casa Id=1299
-  (<code>GrLivArea</code>=5642, <code>SalePrice</code> real=$160,000) recibe una
-  predicción de <strong>$3.88M</strong> — un error de +$3.7M en un solo punto.
-  El modelo nunca vio casas con esa área durante el entrenamiento (se excluyeron por
-  diseño), así que extrapola fuera de su rango de entrenamiento; en log-espacio ese
-  error es moderado, pero <code>expm1</code> lo amplifica exponencialmente al volver
-  a USD. Excluyendo esos 2 puntos conocidos, el RMSE sobre train baja a
-  <strong>$13,037</strong> (esperable, es desempeño de train, no de generalización).
-  Esto confirma una limitación real del modelo: <strong>es frágil ante extrapolación
-  fuera del rango de entrenamiento</strong> — relevante si el held-out del día de
-  competencia contiene casas con características fuera de lo visto en
-  <code>train.csv</code> (se documenta como limitación en la discusión, Batch 6).</p>
+  <h2>Investigación detallada: por qué promediar 5 modelos ayuda</h2>
+  <p>Cada modelo del ensemble ve un 80% distinto de los datos y parte de una
+  inicialización de pesos distinta (<code>seed + fold</code>) — sus errores de
+  predicción no están perfectamente correlacionados: donde un fold sobreestima por
+  ruido específico de su subconjunto de entrenamiento, otro puede no hacerlo. Promediar
+  las predicciones en log-espacio cancela parte de ese ruido no correlacionado
+  (varianza), dejando principalmente el sesgo compartido por todos — que es
+  menor que el error total de cualquier modelo individual. Esto es la razón
+  estadística estándar detrás de por qué el ensemble ($33,610) le gana con margen al
+  mejor modelo individual evaluado sobre el mismo holdout ($40,259).</p>
 
   <h2>Impedimentos encontrados</h2>
-  <p>Ninguno; ambos scripts corrieron de punta a punta sin intervención manual.</p>
+  <p>Un bug real: <code>meta.json</code> originalmente guardaba un solo
+  <code>n_features_in</code> compartido para reconstruir los 5 modelos al cargar el
+  ensemble, asumiendo que todos los folds producían el mismo ancho de one-hot. Falló
+  con <code>size mismatch</code> porque un fold vio una categoría rara de
+  <code>Neighborhood</code> que otro no vio en su 80% de train, produciendo un ancho
+  de una columna menos. Se corrigió infiriendo el ancho desde
+  <code>state_dict["net.0.weight"].shape[1]</code> de cada modelo individualmente en
+  vez de un valor global — cada modelo sabe su propio tamaño de entrada.</p>
 
   <h2>Qué más se podría hacer</h2>
   <ul>
-    <li><strong>Clipping de predicciones</strong> a un rango razonable (p. ej. el
-    percentil 1–99 de <code>SalePrice</code> visto en train) como salvaguarda contra
-    extrapolaciones catastróficas en el held-out.</li>
-    <li><strong>K-fold para el modelo final</strong>, promediando predicciones de
-    varios folds, si el tiempo antes de la presentación lo permite.</li>
+    <li><strong>Modelo de incertidumbre</strong> (cuantiles, intervalos de
+    predicción) en vez del clip fijo, para acotar el daño de forma más principiada
+    que un límite duro.</li>
+    <li><strong>Ensembles heterogéneos</strong>: combinar arquitecturas distintas
+    (no solo distintos folds de la misma config) para mayor diversidad y potencial
+    mejora adicional.</li>
   </ul>
 
   <h2>Glosario</h2>
   <dl class="glossary">
+    <dt>Ensemble</dt>
+    <dd>Combinar las predicciones de varios modelos (aquí, promedio simple en
+    log-espacio) para reducir la varianza del error respecto a un solo modelo.</dd>
+
     <dt>Extrapolación</dt>
     <dd>Predecir sobre entradas fuera del rango de valores visto durante
     entrenamiento; los modelos de ML en general no tienen garantías de
     comportamiento razonable ahí.</dd>
 
-    <dt>Sanity check vs. validación</dt>
-    <dd>Correr <code>predict.py</code> sobre datos ya vistos en entrenamiento solo
-    confirma que el pipeline funciona técnicamente — no mide generalización, que
-    requiere datos no vistos (el split 80/20 o el held-out real).</dd>
+    <dt>Holdout anidado</dt>
+    <dd>Un split adicional, separado del que usa la validación cruzada, que ningún
+    modelo del ensemble ve durante entrenamiento ni selección de hiperparámetros —
+    necesario para medir el desempeño del ensemble completo sin fuga de datos.</dd>
   </dl>
 
   <footer>

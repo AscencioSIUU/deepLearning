@@ -257,6 +257,10 @@
     (<code>cross_validate_config</code> en <code>src/model.py</code>) — val RMSE log
     0.227 ± 0.035, USD $43,278 ± $9,175, consistente con el $41,401 del split
     original. Confirma que la victoria del baseline no fue ruido del split 80/20.
+    Iteración posterior (Batch 5): agregar 4 features derivadas bajó ese mismo CV a
+    $38,068 ± $3,342, y usar los 5 modelos del CV como ensemble (en vez de un solo
+    reentreno) bajó el RMSE medido en holdout independiente a <strong>$33,610</strong>
+    — ~19% mejor que el punto de partida de este batch.
   </div>
 
   <h2>Qué más se podría hacer</h2>
