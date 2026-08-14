@@ -6,9 +6,9 @@ Salida: <ruta_al_csv sin extensión>_predictions.csv con columnas Id, SalePrice_
 """
 import json
 import os
+import pickle
 import sys
 
-import joblib
 import numpy as np
 import pandas as pd
 import torch
@@ -23,7 +23,8 @@ ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
 def load_artifacts():
     with open(os.path.join(ARTIFACTS_DIR, "meta.json")) as f:
         meta = json.load(f)
-    pipe = joblib.load(os.path.join(ARTIFACTS_DIR, "pipeline.joblib"))
+    with open(os.path.join(ARTIFACTS_DIR, "pipeline.pkl"), "rb") as f:
+        pipe = pickle.load(f)
     model = MLP(n_features=meta["n_features_in"], hidden_sizes=tuple(meta["hidden_sizes"]),
                 dropout=meta["dropout"], batchnorm=meta["batchnorm"])
     model.load_state_dict(torch.load(os.path.join(ARTIFACTS_DIR, "model.pt")))

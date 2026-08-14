@@ -110,6 +110,42 @@ def train_model(model, train_loader, val_loader, lr=1e-3, weight_decay=0.0,
     return model, history, best_val
 
 
+def cross_validate_config(X, y, build_pipeline_fn, config, k=5, seed=42,
+                           epochs=200, patience=20, batch_size=32):
+    """K-fold CV de una config: reajusta el preprocessing pipeline en cada fold
+    (evita fuga de datos) y entrena desde cero. Devuelve RMSE log/USD por fold."""
+    from sklearn.model_selection import KFold
+
+    X = X.reset_index(drop=True)
+    y = y.reset_index(drop=True)
+    kf = KFold(n_splits=k, shuffle=True, random_state=seed)
+
+    fold_results = []
+    for fold, (tr_idx, va_idx) in enumerate(kf.split(X)):
+        X_tr, X_va = X.iloc[tr_idx], X.iloc[va_idx]
+        y_tr, y_va = y.iloc[tr_idx], y.iloc[va_idx]
+
+        pipe = build_pipeline_fn(X_tr)
+        X_tr_t = pipe.fit_transform(X_tr)
+        X_va_t = pipe.transform(X_va)
+        train_loader, val_loader = make_loaders(X_tr_t, y_tr, X_va_t, y_va, batch_size=batch_size)
+
+        torch.manual_seed(seed)
+        model = MLP(n_features=X_tr_t.shape[1], hidden_sizes=config["hidden_sizes"],
+                    dropout=config["dropout"], batchnorm=config["batchnorm"])
+        model, _, val_rmse_log = train_model(
+            model, train_loader, val_loader, lr=config["lr"],
+            weight_decay=config["weight_decay"], epochs=epochs, patience=patience,
+        )
+        fold_results.append({
+            "fold": fold,
+            "val_rmse_log": val_rmse_log,
+            "val_rmse_usd": rmse_dollars(model, val_loader),
+        })
+
+    return fold_results
+
+
 if __name__ == "__main__":
     # ponytail: smoke test de una config chica, no framework -- `python src/model.py`
     import sys, os
@@ -135,3 +171,9 @@ if __name__ == "__main__":
     assert len(history["train_rmse"]) > 0
     print(f"OK: smoke test, {len(history['train_rmse'])} épocas, val_rmse(log)={best_val:.4f}, "
           f"val_rmse($)={rmse_dollars(model, val_loader):,.0f}")
+
+    cv_config = {"hidden_sizes": (64, 32), "dropout": 0.0, "weight_decay": 0.0, "batchnorm": False, "lr": 1e-3}
+    cv_results = cross_validate_config(X, y, build_pipeline, cv_config, k=3, epochs=50, patience=10)
+    assert len(cv_results) == 3
+    cv_rmses = [r["val_rmse_log"] for r in cv_results]
+    print(f"OK: CV smoke test (k=3), val_rmse(log) por fold={[round(r,4) for r in cv_rmses]}")

@@ -76,9 +76,12 @@ anchura entre 32 y 256 neuronas por capa, activación ReLU, dropout opcional (0�
 `BatchNorm1d` opcional, salida de una neurona (regresión). Se probaron 8
 combinaciones distintas (sección 3).
 
-**División de datos**: split 80/20 train/validation con seed fija (42), sin fuga de
-información (el `ColumnTransformer` se ajusta solo con train). No se usó k-fold por
-presupuesto de tiempo de iteración; queda como trabajo futuro (sección 5).
+**División de datos**: split 80/20 train/validation con seed fija (42) para el sweep
+de iteraciones, sin fuga de información (el `ColumnTransformer` se ajusta solo con
+train). La config ganadora se validó además con **5-fold cross-validation**
+(`cross_validate_config` en `src/model.py`): en cada fold se reajusta el pipeline de
+preprocesamiento únicamente con los datos de ese fold de train, evitando fuga entre
+folds, y el modelo se reentrena desde cero.
 
 **Función de pérdida, optimizador, hiperparámetros**: `MSELoss` sobre el target en
 escala `log1p(SalePrice)` (evita que las pocas casas caras dominen el gradiente y
@@ -117,6 +120,13 @@ espurios de las ~930 filas de entrenamiento que no generalizan.
 normaliza `BatchNorm1d` son ruidosas, introduciendo inestabilidad en vez de
 acelerar la convergencia — consistente con la recomendación general de usar
 batchnorm en datasets grandes con batches más estables.
+
+**Validación cruzada de la config ganadora**: para confirmar que C1 no ganó por
+ruido del split 80/20, se corrió 5-fold CV reajustando el pipeline en cada fold.
+Resultado: **val RMSE log = 0.227 ± 0.035**, **val RMSE USD = $43,278 ± $9,175** —
+consistente con el $41,401 del split original (dentro de 1 desviación estándar),
+confirmando que la ventaja del baseline es robusta y no un artefacto de un único
+split.
 
 ## 4. Discusión de resultados
 
@@ -158,19 +168,22 @@ estadístico — con pocas muestras relativas a la dimensión, la complejidad ef
 del modelo debe mantenerse baja, y el early stopping ya cumple ese rol sin necesitar
 mecanismos adicionales.
 
-**Limitaciones del enfoque y del dataset**: (1) un solo split 80/20 introduce ruido
-de muestreo no cuantificado en el ranking de configs cercanas; (2) el one-hot de
-`Neighborhood` (25 categorías) por sí solo aporta ~25 columnas dispersas, con pocas
-observaciones por categoría en los barrios menos frecuentes; (3) el modelo extrapola
-mal fuera del rango de entrenamiento, como se documentó arriba.
+**Limitaciones del enfoque y del dataset**: (1) el sweep completo (8 configs) usó un
+solo split 80/20, con ruido de muestreo no cuantificado en el ranking de configs
+cercanas — mitigado solo para la ganadora vía CV posterior, no para las 8 configs
+completas por presupuesto de tiempo; (2) el one-hot de `Neighborhood` (25 categorías)
+por sí solo aporta ~25 columnas dispersas, con pocas observaciones por categoría en
+los barrios menos frecuentes; (3) el modelo extrapola mal fuera del rango de
+entrenamiento, como se documentó arriba.
 
 ## 5. Conclusiones
 
-- **Desempeño final**: RMSE de validación (split 80/20, datos no vistos por el
-  modelo final) = **$41,401 USD** (0.2039 en escala log). Esta es la estimación
-  honesta de generalización esperada en el held-out de competencia, dado que el
-  modelo final se reentrenó sobre el 100% de `train.csv` con el mismo número de
-  épocas óptimo encontrado en ese split.
+- **Desempeño final**: RMSE de validación = **$41,401 USD** (split 80/20 único,
+  0.2039 en log) y **$43,278 ± $9,175 USD** (5-fold CV, 0.227 ± 0.035 en log). Ambas
+  estimaciones son consistentes entre sí, lo que da confianza en que ~$41k–$43k es
+  la generalización esperada en el held-out de competencia, dado que el modelo
+  final se reentrenó sobre el 100% de `train.csv` con el número de épocas óptimo
+  encontrado en el split.
 - **Aprendizajes técnicos**: (1) entrenar sobre el target en escala log es
   determinante en datasets de precios con sesgo positivo, tanto para la
   optimización como para la interpretabilidad del error; (2) con pocas muestras
@@ -179,18 +192,23 @@ mal fuera del rango de entrenamiento, como se documentó arriba.
   "correcta" no es automáticamente "más regularización"; (3) invertir una
   transformación no lineal (`expm1`) amplifica errores de forma no uniforme,
   hay que revisar el error en la escala en que realmente importa (USD), no solo en
-  la escala de entrenamiento (log).
-- **Mejoras futuras**: k-fold cross-validation para reducir el ruido del ranking de
-  configs; clipping de predicciones a un rango razonable como salvaguarda contra
-  extrapolación catastrófica; feature engineering (edad de la casa, área total
-  combinada) para capturar señal no explícita en las columnas crudas; ensamble de
-  varios modelos (promedio de predicciones) para reducir varianza.
+  la escala de entrenamiento (log); (4) validar la config ganadora con k-fold CV
+  (no solo con el split original) es barato (~15s en CPU) y da una estimación de
+  generalización con incertidumbre cuantificada, en vez de un solo número puntual.
+- **Mejoras futuras**: extender el 5-fold CV a las 8 configs completas del sweep
+  (no solo a la ganadora) para un ranking más robusto; clipping de predicciones a
+  un rango razonable como salvaguarda contra extrapolación catastrófica; feature
+  engineering (edad de la casa, área total combinada) para capturar señal no
+  explícita en las columnas crudas; ensamble de varios modelos (promedio de
+  predicciones) para reducir varianza.
 
 ## 6. Enlace al repositorio de GitHub
 
 [https://github.com/AscencioSIUU/deepLearning/tree/main/projects/proy-1-competencia](https://github.com/AscencioSIUU/deepLearning/tree/main/projects/proy-1-competencia)
 
 Contiene el código completo: EDA y desarrollo (`proy1_mlp.ipynb`, generado por
-`build_nb.py`), preprocesamiento (`src/preprocessing.py`), modelo y training loop
-(`src/model.py`), entrenamiento final (`train.py`) y predicción/evaluación
-(`predict.py`), con instrucciones de reproducción en el `README.md` del proyecto.
+`build_nb.py`), preprocesamiento (`src/preprocessing.py`), modelo, training loop y
+cross-validation (`src/model.py`), entrenamiento final (`train.py`, serializa el
+pipeline con el módulo estándar `pickle` y los pesos con `torch.save`) y
+predicción/evaluación (`predict.py`), con instrucciones de reproducción en el
+`README.md` del proyecto.

@@ -180,7 +180,7 @@
   regularización) sobre <strong>todo</strong> <code>train.csv</code> (más datos
   disponibles = mejor generalización esperada en el held-out real), fijando el número
   de épocas al punto óptimo observado en el split 80/20 interno. Guarda
-  <code>artifacts/model.pt</code>, <code>artifacts/pipeline.joblib</code> y
+  <code>artifacts/model.pt</code>, <code>artifacts/pipeline.pkl</code> y
   <code>artifacts/meta.json</code>. <code>predict.py</code> carga esos 3 artifacts y
   predice sobre un CSV nuevo, invirtiendo <code>expm1</code> para devolver USD.</p>
 
@@ -192,6 +192,8 @@
         <tr><td>Épocas (reentreno con todo train)</td><td class="num">174</td></tr>
         <tr><td>Val RMSE interno (log), split 80/20</td><td class="num">0.2039</td></tr>
         <tr><td>Val RMSE interno (USD), split 80/20</td><td class="num">$41,401</td></tr>
+        <tr><td>Val RMSE 5-fold CV (log)</td><td class="num">0.227 ± 0.035</td></tr>
+        <tr><td>Val RMSE 5-fold CV (USD)</td><td class="num">$43,278 ± $9,175</td></tr>
         <tr><td>Sanity check: predict.py sobre train.csv completo</td><td class="num">RMSE $112,185 (log 0.1284)</td></tr>
       </tbody>
     </table>
@@ -202,7 +204,7 @@
     <div class="card good">
       <h3>Pros del enfoque</h3>
       <ul>
-        <li>El pipeline serializado (<code>joblib</code>) se ajusta una sola vez y se
+        <li>El pipeline serializado (<code>pickle</code>) se ajusta una sola vez y se
         reutiliza en <code>predict.py</code> — elimina por construcción el riesgo de
         que entrenamiento y predicción usen transformaciones distintas (recomendación
         #2 del enunciado).</li>

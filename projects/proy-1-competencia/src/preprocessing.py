@@ -8,7 +8,7 @@ Uso:
     pipe = build_pipeline(X)
     X_t = pipe.fit_transform(X)
 
-El mismo `pipe` (serializado con joblib) se reutiliza en train.py/predict.py para
+El mismo `pipe` (serializado con pickle) se reutiliza en train.py/predict.py para
 garantizar que el held-out reciba exactamente las mismas transformaciones.
 """
 import numpy as np

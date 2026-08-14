@@ -252,11 +252,17 @@
   <h2>Impedimentos encontrados</h2>
   <p>Ninguno; las 8 configs corrieron en &lt;30s totales en CPU.</p>
 
+  <div class="callout">
+    <strong>Actualización (Batch 5/6):</strong> se corrió 5-fold CV sobre C1
+    (<code>cross_validate_config</code> en <code>src/model.py</code>) — val RMSE log
+    0.227 ± 0.035, USD $43,278 ± $9,175, consistente con el $41,401 del split
+    original. Confirma que la victoria del baseline no fue ruido del split 80/20.
+  </div>
+
   <h2>Qué más se podría hacer</h2>
   <ul>
-    <li><strong>K-fold cross-validation</strong> sobre el baseline y los 2-3
-    candidatos más cercanos, para confirmar que C1 gana de forma robusta y no por
-    ruido del split.</li>
+    <li><strong>Extender el 5-fold CV a las 8 configs completas del sweep</strong>
+    (no solo a la ganadora), para un ranking robusto entre todas ellas.</li>
     <li><strong>Batch size mayor</strong> para C6 (batchnorm) antes de descartarlo
     definitivamente — el problema observado puede ser específico de
     <code>batch_size=32</code>.</li>

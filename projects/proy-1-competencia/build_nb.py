@@ -198,7 +198,7 @@ md("""
 `ColumnTransformer` de sklearn con 3 ramas — numéricas (mediana + escalado),
 ordinales (imputación "None" + `OrdinalEncoder` con el orden real de cada variable,
 p. ej. Po<Fa<TA<Gd<Ex) y nominales (imputación "None" + one-hot) — serializable con
-joblib para reusar exactamente el mismo pipeline sobre el held-out.
+pickle para reusar exactamente el mismo pipeline sobre el held-out.
 """)
 
 code("""
@@ -385,13 +385,50 @@ md("""
   modelo final (Batch 5), reentrenado sobre train+val completo.
 """)
 
+# ---------------------------------------------------------------- 4.1 Cross-validation
+md("""
+### 4.1 Validación cruzada de la config ganadora
+
+Un solo split 80/20 introduce ruido de muestreo en el ranking de configs (Batch 4,
+limitación señalada). Para confirmar que la ganadora del sweep no ganó por azar del
+split, se corre 5-fold CV: en cada fold se reajusta el pipeline de preprocesamiento
+solo con los datos de ese fold de train (mismo cuidado de fuga de datos que en el
+split original) y se reentrena el modelo desde cero.
+""")
+
+code("""
+from model import cross_validate_config
+
+best_id = results_df.iloc[0]["id"]
+best_cfg = next(c for c in configs if c["id"] == best_id)
+print(f"Config a validar: {best_id} -> {best_cfg}")
+
+cv_results = cross_validate_config(X, y, build_pipeline, best_cfg, k=5, seed=SEED)
+cv_df = pd.DataFrame(cv_results)
+cv_df
+""")
+
+code("""
+cv_mean_log, cv_std_log = cv_df["val_rmse_log"].mean(), cv_df["val_rmse_log"].std()
+cv_mean_usd, cv_std_usd = cv_df["val_rmse_usd"].mean(), cv_df["val_rmse_usd"].std()
+print(f"CV (k=5) val RMSE log: {cv_mean_log:.4f} ± {cv_std_log:.4f}")
+print(f"CV (k=5) val RMSE USD: ${cv_mean_usd:,.0f} ± ${cv_std_usd:,.0f}")
+""")
+
+md("""
+Si la media de CV queda cerca del `val_rmse_log` del split 80/20 original (con una
+desviación estándar entre folds razonable), confirma que el resultado del sweep es
+robusto y no un artefacto de ese split específico — esa media (no el número de un
+solo split) es la estimación de generalización que se reporta como definitiva.
+""")
+
 # ================================================================== BATCH 5
 md("""
 ## 5. Modelo final y predicción end-to-end
 
 La config ganadora del sweep (C1: 64→32, sin regularización) se reentrena sobre
 **todo** `train.csv` en `train.py`, fijando las épocas al punto óptimo observado
-arriba, y se guardan los artifacts en `artifacts/` (`model.pt`, `pipeline.joblib`,
+arriba, y se guardan los artifacts en `artifacts/` (`model.pt`, `pipeline.pkl`,
 `meta.json`). `predict.py` los carga y predice sobre cualquier CSV nuevo —
 incluido el held-out del día de competencia — sin pasos manuales:
 

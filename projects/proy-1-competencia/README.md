@@ -14,7 +14,7 @@ proy-1-competencia/
 ├── src/preprocessing.py   # ColumnTransformer reutilizado por notebook y predict.py
 ├── train.py                # entrena el modelo final, guarda artifacts/
 ├── predict.py              # carga artifacts/, predice sobre un CSV nuevo, calcula RMSE
-├── artifacts/              # model.pt, pipeline.joblib, meta.json (generados por train.py)
+├── artifacts/              # model.pt, pipeline.pkl, meta.json (generados por train.py)
 ├── docs/                   # explicadores HTML por batch + figuras
 └── reporte.md / reporte.pdf
 ```

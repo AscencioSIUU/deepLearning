@@ -9,5 +9,10 @@
   "n_epochs_final": 174,
   "holdout_val_rmse_log": 0.20385555448242507,
   "holdout_val_rmse_usd": 41401.02103699838,
+  "cv_k": 5,
+  "cv_val_rmse_log_mean": 0.2273056332236303,
+  "cv_val_rmse_log_std": 0.030861672670275963,
+  "cv_val_rmse_usd_mean": 43278.13392374903,
+  "cv_val_rmse_usd_std": 8206.304403182692,
   "seed": 42
 }

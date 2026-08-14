@@ -203,7 +203,7 @@
         el orden explícito de cada columna (p. ej. <code>Po&lt;Fa&lt;TA&lt;Gd&lt;Ex</code>)
         en vez de dejar que sklearn infiera un orden alfabético incorrecto.</li>
         <li>El pipeline completo (imputación + escalado + encoding) vive en un solo
-        objeto sklearn serializable con joblib — <code>predict.py</code> (Batch 5) lo
+        objeto sklearn serializable con pickle (módulo estándar de Python) — <code>predict.py</code> (Batch 5) lo
         carga y aplica sin reescribir lógica, eliminando el riesgo de que
         entrenamiento y predicción diverjan.</li>
         <li><code>handle_unknown="ignore"</code> en el one-hot y
