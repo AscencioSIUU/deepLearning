@@ -215,6 +215,8 @@ complejidad efectiva. Subir capacidad sin esto solo aumentó el overfitting.
 
 ## 6. Enlace al repositorio de GitHub
 
+[https://github.com/AscencioSIUU/deepLearning/tree/main/projects/proy-1-competencia](https://github.com/AscencioSIUU/deepLearning/tree/main/projects/proy-1-competencia)
+
 El repositorio contiene el código completo: preprocesamiento (`src/preprocessing.py`),
 la arquitectura del MLP y el training loop (`src/model.py`), el entrenamiento del
 ensemble por validación cruzada (`src/ensemble.py`, `train.py`) y la
