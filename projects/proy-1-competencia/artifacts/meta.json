@@ -1,16 +1,22 @@
 {
+  "model": "mlp-ensemble",
   "hidden_sizes": [
-    64,
-    32
+    96
   ],
-  "dropout": 0.0,
-  "batchnorm": false,
+  "skip": true,
+  "dropout": 0.1,
+  "target_standardized": true,
+  "lr_scheduler": "ReduceLROnPlateau",
   "k_folds": 5,
-  "cv_val_rmse_log_mean": 0.20923513522539502,
-  "cv_val_rmse_log_std": 0.01993089632258684,
-  "cv_val_rmse_usd_mean": 38068.27526676729,
-  "cv_val_rmse_usd_std": 3342.4214031305164,
+  "seeds": [
+    42,
+    1,
+    7,
+    11,
+    23
+  ],
+  "n_mlps": 25,
+  "cv_rmse_usd": 18795.33512457507,
   "clip_min_usd": 17450.0,
-  "clip_max_usd": 1117500.0,
-  "seed": 42
+  "clip_max_usd": 1117500.0
 }

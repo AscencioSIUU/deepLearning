@@ -1,8 +1,3 @@
-"""MLP y training loop para la competencia de regresión (SalePrice en log-espacio).
-
-Dataset es pequeño (~1000 filas, 223 features) -> CPU es suficiente y más simple que
-gestionar dispositivo MPS/CUDA para un modelo de este tamaño.
-"""
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,7 +5,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 
 class MLP(nn.Module):
-    def __init__(self, n_features, hidden_sizes=(128, 64), dropout=0.2, batchnorm=False):
+    def __init__(self, n_features, hidden_sizes=(96,), dropout=0.1, batchnorm=False,
+                 skip=False):
         super().__init__()
         layers = []
         in_dim = n_features
@@ -24,9 +20,13 @@ class MLP(nn.Module):
             in_dim = h
         layers.append(nn.Linear(in_dim, 1))
         self.net = nn.Sequential(*layers)
+        self.skip = nn.Linear(n_features, 1) if skip else None
 
     def forward(self, x):
-        return self.net(x).squeeze(-1)
+        out = self.net(x).squeeze(-1)
+        if self.skip is not None:
+            out = out + self.skip(x).squeeze(-1)
+        return out
 
 
 def make_loaders(X_train, y_train, X_val, y_val, batch_size=32):
@@ -44,7 +44,6 @@ def make_loaders(X_train, y_train, X_val, y_val, batch_size=32):
 
 
 def rmse_log(model, loader):
-    """RMSE en el espacio en que se entrena (log1p(SalePrice))."""
     model.eval()
     sq_errs, n = 0.0, 0
     with torch.no_grad():
@@ -55,26 +54,13 @@ def rmse_log(model, loader):
     return (sq_errs / n) ** 0.5
 
 
-def rmse_dollars(model, loader):
-    """RMSE en USD: invierte log1p con expm1 antes de comparar."""
-    model.eval()
-    sq_errs, n = 0.0, 0
-    with torch.no_grad():
-        for xb, yb in loader:
-            pred = torch.expm1(model(xb))
-            true = torch.expm1(yb)
-            sq_errs += ((pred - true) ** 2).sum().item()
-            n += len(yb)
-    return (sq_errs / n) ** 0.5
-
-
 def train_model(model, train_loader, val_loader, lr=1e-3, weight_decay=0.0,
-                 epochs=200, patience=20, verbose=False):
-    """Entrena con Adam + MSELoss (en log-espacio) y early stopping sobre val RMSE."""
+                epochs=400, patience=30, scheduler=True):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.MSELoss()
+    sched = (torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=8)
+             if scheduler else None)
 
-    history = {"train_rmse": [], "val_rmse": []}
     best_val = float("inf")
     best_state = None
     bad_epochs = 0
@@ -88,10 +74,9 @@ def train_model(model, train_loader, val_loader, lr=1e-3, weight_decay=0.0,
             loss.backward()
             optimizer.step()
 
-        train_rmse = rmse_log(model, train_loader)
         val_rmse = rmse_log(model, val_loader)
-        history["train_rmse"].append(train_rmse)
-        history["val_rmse"].append(val_rmse)
+        if sched is not None:
+            sched.step(val_rmse)
 
         if val_rmse < best_val:
             best_val = val_rmse
@@ -100,100 +85,8 @@ def train_model(model, train_loader, val_loader, lr=1e-3, weight_decay=0.0,
         else:
             bad_epochs += 1
 
-        if verbose and epoch % 10 == 0:
-            print(f"epoch {epoch:3d}  train_rmse={train_rmse:.4f}  val_rmse={val_rmse:.4f}")
-
         if bad_epochs >= patience:
             break
 
     model.load_state_dict(best_state)
-    return model, history, best_val
-
-
-def cross_validate_config(X, y, build_pipeline_fn, config, k=5, seed=42,
-                           epochs=200, patience=20, batch_size=32, return_models=False):
-    """K-fold CV de una config: reajusta el preprocessing pipeline en cada fold
-    (evita fuga de datos) y entrena desde cero. Devuelve RMSE log/USD por fold.
-
-    Con return_models=True, cada fold_result incluye también su (pipeline, model)
-    ya entrenados -- los 5 folds forman un ensemble natural (cada uno vio ~80% de
-    los datos, validado contra el 20% restante) que se usa como modelo final."""
-    from sklearn.model_selection import KFold
-
-    X = X.reset_index(drop=True)
-    y = y.reset_index(drop=True)
-    kf = KFold(n_splits=k, shuffle=True, random_state=seed)
-
-    fold_results = []
-    for fold, (tr_idx, va_idx) in enumerate(kf.split(X)):
-        X_tr, X_va = X.iloc[tr_idx], X.iloc[va_idx]
-        y_tr, y_va = y.iloc[tr_idx], y.iloc[va_idx]
-
-        pipe = build_pipeline_fn(X_tr)
-        X_tr_t = pipe.fit_transform(X_tr)
-        X_va_t = pipe.transform(X_va)
-        train_loader, val_loader = make_loaders(X_tr_t, y_tr, X_va_t, y_va, batch_size=batch_size)
-
-        torch.manual_seed(seed + fold)
-        model = MLP(n_features=X_tr_t.shape[1], hidden_sizes=config["hidden_sizes"],
-                    dropout=config["dropout"], batchnorm=config["batchnorm"])
-        model, _, val_rmse_log = train_model(
-            model, train_loader, val_loader, lr=config["lr"],
-            weight_decay=config["weight_decay"], epochs=epochs, patience=patience,
-        )
-        result = {
-            "fold": fold,
-            "val_rmse_log": val_rmse_log,
-            "val_rmse_usd": rmse_dollars(model, val_loader),
-        }
-        if return_models:
-            result["pipeline"] = pipe
-            result["model"] = model
-        fold_results.append(result)
-
-    return fold_results
-
-
-def ensemble_predict_log(fold_results, X_new):
-    """Promedia las predicciones (en log-espacio) de los modelos de un ensemble
-    de CV sobre datos nuevos -- cada fold aplica su propio pipeline ya ajustado."""
-    preds = []
-    for r in fold_results:
-        X_t = r["pipeline"].transform(X_new)
-        r["model"].eval()
-        with torch.no_grad():
-            preds.append(r["model"](torch.tensor(X_t, dtype=torch.float32)).numpy())
-    return np.mean(preds, axis=0)
-
-
-if __name__ == "__main__":
-    # ponytail: smoke test de una config chica, no framework -- `python src/model.py`
-    import sys, os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from preprocessing import load_and_clean, build_pipeline
-    from sklearn.model_selection import train_test_split
-
-    csv = os.path.join(os.path.dirname(__file__), "..", "train.csv")
-    df = load_and_clean(csv)
-    X = df.drop(columns=["SalePrice", "SalePriceLog"])
-    y = df["SalePriceLog"]
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    pipe = build_pipeline(X_train)
-    X_train_t = pipe.fit_transform(X_train)
-    X_val_t = pipe.transform(X_val)
-
-    train_loader, val_loader = make_loaders(X_train_t, y_train, X_val_t, y_val)
-    model = MLP(n_features=X_train_t.shape[1], hidden_sizes=(64, 32), dropout=0.1)
-    model, history, best_val = train_model(model, train_loader, val_loader, epochs=50, patience=10)
-
-    assert best_val > 0 and best_val < 1.0, f"val RMSE (log) fuera de rango esperado: {best_val}"
-    assert len(history["train_rmse"]) > 0
-    print(f"OK: smoke test, {len(history['train_rmse'])} épocas, val_rmse(log)={best_val:.4f}, "
-          f"val_rmse($)={rmse_dollars(model, val_loader):,.0f}")
-
-    cv_config = {"hidden_sizes": (64, 32), "dropout": 0.0, "weight_decay": 0.0, "batchnorm": False, "lr": 1e-3}
-    cv_results = cross_validate_config(X, y, build_pipeline, cv_config, k=3, epochs=50, patience=10)
-    assert len(cv_results) == 3
-    cv_rmses = [r["val_rmse_log"] for r in cv_results]
-    print(f"OK: CV smoke test (k=3), val_rmse(log) por fold={[round(r,4) for r in cv_rmses]}")
+    return model, None, best_val

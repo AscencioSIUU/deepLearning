@@ -1,16 +1,3 @@
-"""Preprocesamiento del dataset Ames Housing para el MLP de la competencia.
-
-Uso:
-    from preprocessing import load_and_clean, build_pipeline
-
-    df = load_and_clean("train.csv")
-    X, y = df.drop(columns=["SalePrice", "SalePriceLog"]), df["SalePriceLog"]
-    pipe = build_pipeline(X)
-    X_t = pipe.fit_transform(X)
-
-El mismo `pipe` (serializado con pickle) se reutiliza en train.py/predict.py para
-garantizar que el held-out reciba exactamente las mismas transformaciones.
-"""
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -18,23 +5,12 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
 
-# ---------------------------------------------------------------- columnas
-
-# Categóricas donde NA significa "no tiene esa característica" -> imputar "None"
-NONE_FILL_COLS = [
-    "Alley", "MasVnrType", "BsmtQual", "BsmtCond", "BsmtExposure",
-    "BsmtFinType1", "BsmtFinType2", "FireplaceQu", "GarageType", "GarageFinish",
-    "GarageQual", "GarageCond", "PoolQC", "Fence", "MiscFeature",
-]
-
-# Ordinales de calidad, mismo orden Po<Fa<TA<Gd<Ex (+ None cuando no aplica)
 QUALITY_ORDER = ["None", "Po", "Fa", "TA", "Gd", "Ex"]
 QUALITY_COLS = [
     "ExterQual", "ExterCond", "BsmtQual", "BsmtCond", "HeatingQC",
     "KitchenQual", "FireplaceQu", "GarageQual", "GarageCond", "PoolQC",
 ]
 
-# Otras ordinales con orden propio
 ORDINAL_MAPS = {
     "BsmtExposure": ["None", "No", "Mn", "Av", "Gd"],
     "BsmtFinType1": ["None", "Unf", "LwQ", "Rec", "BLQ", "ALQ", "GLQ"],
@@ -51,29 +27,33 @@ for c in QUALITY_COLS:
     ORDINAL_MAPS[c] = QUALITY_ORDER
 
 ORDINAL_COLS = list(ORDINAL_MAPS.keys())
-
-# Numérica con LotFrontage: imputar mediana. GarageYrBlt: mediana (0 rompería la escala).
-NUMERIC_MEDIAN_COLS_HINT = ["LotFrontage", "GarageYrBlt", "MasVnrArea"]
-
 DROP_COLS = ["Id"]
 
 
 def engineer_features(df):
-    """Features derivadas (sección 3 del reporte): mejoran RMSE ~15% en CV sobre
-    las columnas crudas, capturando señal (área total, antigüedad) que el MLP no
-    puede reconstruir fácilmente por sí solo con 930 filas de entrenamiento."""
     df = df.copy()
     df["TotalSF"] = df["TotalBsmtSF"] + df["1stFlrSF"] + df["2ndFlrSF"]
     df["HouseAge"] = df["YrSold"] - df["YearBuilt"]
     df["RemodAge"] = df["YrSold"] - df["YearRemodAdd"]
     df["TotalBath"] = (df["FullBath"] + 0.5 * df["HalfBath"]
-                        + df["BsmtFullBath"] + 0.5 * df["BsmtHalfBath"])
+                       + df["BsmtFullBath"] + 0.5 * df["BsmtHalfBath"])
+    df["Qual_x_TotalSF"] = df["OverallQual"] * df["TotalSF"]
+    df["OverallGrade"] = df["OverallQual"] * df["OverallCond"]
+    df["TotalPorchSF"] = (df["OpenPorchSF"] + df["EnclosedPorch"] + df["3SsnPorch"]
+                          + df["ScreenPorch"] + df["WoodDeckSF"])
+    df["HasGarage"] = (df["GarageArea"] > 0).astype(int)
+    df["HasBsmt"] = (df["TotalBsmtSF"] > 0).astype(int)
+    df["Has2ndFloor"] = (df["2ndFlrSF"] > 0).astype(int)
+    df["HasPool"] = (df["PoolArea"] > 0).astype(int)
+    df["HasFireplace"] = (df["Fireplaces"] > 0).astype(int)
+    df["IsRemodeled"] = (df["YearRemodAdd"] != df["YearBuilt"]).astype(int)
+    for c in ["LotArea", "GrLivArea", "TotalSF", "1stFlrSF", "TotalBsmtSF",
+              "GarageArea", "BsmtFinSF1", "Qual_x_TotalSF", "TotalPorchSF"]:
+        df[c + "_log"] = np.log1p(df[c].clip(lower=0))
     return df
 
 
 def load_and_clean(csv_path):
-    """Carga el CSV, elimina outliers conocidos, agrega features derivadas y el
-    target en escala log."""
     df = pd.read_csv(csv_path)
     if "SalePrice" in df.columns:
         outlier_mask = (df["GrLivArea"] > 4000) & (df["SalePrice"] < 300000)
@@ -84,7 +64,6 @@ def load_and_clean(csv_path):
 
 
 def get_feature_lists(df):
-    """Separa columnas en numéricas / ordinales / nominales, excluyendo target e Id."""
     exclude = set(DROP_COLS) | {"SalePrice", "SalePriceLog"}
     ordinal_cols = [c for c in ORDINAL_COLS if c in df.columns]
     numeric_cols = [
@@ -99,7 +78,6 @@ def get_feature_lists(df):
 
 
 def build_pipeline(df):
-    """Construye el ColumnTransformer a partir de las columnas presentes en df."""
     numeric_cols, ordinal_cols, nominal_cols = get_feature_lists(df)
 
     numeric_pipe = Pipeline([
@@ -120,25 +98,8 @@ def build_pipeline(df):
         ("encode", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
     ])
 
-    pre = ColumnTransformer([
+    return ColumnTransformer([
         ("num", numeric_pipe, numeric_cols),
         ("ord", ordinal_pipe, ordinal_cols),
         ("nom", nominal_pipe, nominal_cols),
     ])
-    return pre
-
-
-if __name__ == "__main__":
-    # ponytail: smoke test, no framework -- corre `python src/preprocessing.py`
-    import os
-    csv = os.path.join(os.path.dirname(__file__), "..", "train.csv")
-    df = load_and_clean(csv)
-    X = df.drop(columns=["SalePrice", "SalePriceLog"])
-    y = df["SalePriceLog"]
-    pipe = build_pipeline(X)
-    X_t = pipe.fit_transform(X)
-    assert X_t.shape[0] == X.shape[0]
-    assert not np.isnan(X_t).any(), "NaNs remain after preprocessing"
-    n_num, n_ord, n_nom = (len(v) for v in get_feature_lists(df))
-    print(f"OK: {X.shape} -> {X_t.shape} (num={n_num} ord={n_ord} nom={n_nom} -> one-hot expande nom)")
-    print("y range (log):", y.min(), y.max())
