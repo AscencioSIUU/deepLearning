@@ -1,0 +1,190 @@
+<title>Batch 5 — Cierre: test, discusión y reporte</title>
+<style>
+  :root {
+    --bg: #f6f4ee; --panel: #ece8dd; --ink: #201f1c; --ink-dim: #59564c; --rule: #d8d3c4;
+    --accent: #3949ab; --accent-ink: #ffffff; --accent-soft: #e4e6f7;
+    --good: #2f7a4f; --good-soft: #e2f0e6; --bad: #a34a26; --bad-soft: #f5e6dd;
+    --warn: #9a7b1f; --warn-soft: #f5edd8;
+    --code-bg: #1c1b26; --code-ink: #e8e6f0; --code-accent: #8fa3ff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a; --panel: #1e1d24; --ink: #eae8e2; --ink-dim: #a5a196; --rule: #34323c;
+    --accent: #8fa3ff; --accent-ink: #12131f; --accent-soft: #23264a;
+    --good: #7fd9a4; --good-soft: #1c3327; --bad: #e8a685; --bad-soft: #3a2620;
+    --warn: #e8ca7f; --warn-soft: #3a3220;
+    --code-bg: #0e0d13; --code-ink: #e8e6f0; --code-accent: #8fa3ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16151a; --panel: #1e1d24; --ink: #eae8e2; --ink-dim: #a5a196; --rule: #34323c;
+      --accent: #8fa3ff; --accent-ink: #12131f; --accent-soft: #23264a;
+      --good: #7fd9a4; --good-soft: #1c3327; --bad: #e8a685; --bad-soft: #3a2620;
+      --warn: #e8ca7f; --warn-soft: #3a3220;
+      --code-bg: #0e0d13; --code-ink: #e8e6f0; --code-accent: #8fa3ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  .eyebrow { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 0.6rem; }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: var(--accent); }
+  h1 { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; font-size: 2.3rem; font-weight: 600; line-height: 1.15; text-wrap: balance; margin: 0.5rem 0 0.3rem; }
+  .subtitle { color: var(--ink-dim); font-size: 1.05rem; margin: 0 0 2.5rem; text-wrap: balance; max-width: 66ch; }
+  h2 { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; font-size: 1.35rem; font-weight: 600; margin: 2.6rem 0 0.9rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.4rem 0 0.4rem; color: var(--accent); }
+  p { margin: 0.6rem 0; max-width: 66ch; }
+  ul, ol { margin: 0.5rem 0; padding-left: 1.3rem; }
+  li { margin: 0.32rem 0; max-width: 62ch; }
+  code { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 0.1rem 0.35rem; font-size: 0.88em; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; margin: 1.2rem 0; }
+  @media (max-width: 560px) { .stat-row { grid-template-columns: 1fr; } }
+  .stat { border: 1px solid var(--rule); border-radius: 10px; padding: 1rem 1.1rem; background: var(--panel); }
+  .stat .label { font-family: ui-monospace, monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim); }
+  .stat .value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); margin-top: 0.15rem; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { border-radius: 10px; padding: 1.1rem 1.2rem; border: 1px solid var(--rule); }
+  .card.good { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 35%, var(--rule)); }
+  .card.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 35%, var(--rule)); }
+  .card h3 { margin-top: 0; color: inherit; }
+  .card.good h3 { color: var(--good); }
+  .card.bad h3 { color: var(--bad); }
+
+  .callout { background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 0.9rem 1.1rem; margin: 1.2rem 0; font-size: 0.95rem; }
+  .callout strong { color: var(--accent); }
+
+  dl.glossary { margin: 1rem 0; }
+  dl.glossary dt { font-weight: 700; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); margin-top: 0.9rem; }
+  dl.glossary dd { margin: 0.15rem 0 0; color: var(--ink-dim); max-width: 62ch; }
+
+  .qa { margin: 1.4rem 0; }
+  .qa .q { font-weight: 700; margin-bottom: 0.25rem; }
+  .qa .a { color: var(--ink-dim); }
+
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--rule); color: var(--ink-dim); font-size: 0.85rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Batch 5 · Laboratorio #1 — MLP</div>
+  <h1>Cierre: test, discusión y reporte</h1>
+  <p class="subtitle">
+    Última pieza del lab: elegir un ganador usando solo señales de validación,
+    tocar el conjunto de test exactamente una vez, y responder las preguntas de
+    análisis con los números reales obtenidos — no con generalidades de manual.
+  </p>
+
+  <h2>Resultado final</h2>
+  <p>Configuración ganadora por RMSE de validación: <strong>corrida 8</strong>
+  (<code>[64, 32]</code>, ReLU, Adam lr=0.01, batch=32, epochs=50, sin
+  regularización). Reentrenada desde cero y evaluada una única vez sobre test:</p>
+  <div class="stat-row">
+    <div class="stat"><div class="label">MSE (test)</div><div class="value">4.10 × 10⁹</div></div>
+    <div class="stat"><div class="label">MAE (test)</div><div class="value">$44,770</div></div>
+    <div class="stat"><div class="label">RMSE (test)</div><div class="value">$64,067</div></div>
+  </div>
+  <div class="callout">
+    <strong>Sin fuga de información:</strong> el RMSE de test (64,067) queda muy
+    cerca del RMSE de validación de esa misma configuración (64,924) — señal de que
+    la selección de hiperparámetros no sobreajustó a validación y de que el modelo
+    generaliza de forma consistente a datos nunca vistos.
+  </div>
+
+  <h2>Qué se hizo</h2>
+  <ul>
+    <li>Se seleccionó la mejor fila de <code>results_df</code> por RMSE de validación,
+    excluyendo la corrida divergente (SGD, NaN).</li>
+    <li>Se reentrenó esa configuración desde cero (misma semilla) y se evaluó
+    <strong>una sola vez</strong> sobre <code>X_test</code>/<code>y_test</code>, que no
+    se había tocado desde el split del Batch 1.</li>
+    <li>Se respondieron las 6 preguntas de discusión del enunciado con los números
+    reales de las 15 corridas, no con respuestas genéricas de teoría.</li>
+    <li>Se generó el reporte PDF (≤3 páginas) con investigación de optimizadores,
+    parámetros de capas, tabla de resultados y análisis.</li>
+  </ul>
+
+  <h2>Respuestas de discusión (resumen)</h2>
+  <div class="qa">
+    <div class="q">¿Mayor impacto positivo / negativo?</div>
+    <div class="a">Positivo: subir <code>lr</code> de Adam a 0.01 (RMSE val 68,496 → 64,924). Negativo: SGD con <code>lr=0.01</code> + <code>momentum=0.9</code> divergió a NaN.</div>
+  </div>
+  <div class="qa">
+    <div class="q">¿Overfitting / underfitting?</div>
+    <div class="a">Overfitting leve en la arquitectura ancha [256,128]. Underfitting claro en <code>lr</code> bajo y en el combo de regularización (BN+dropout+L2) — ambos por falta de épocas suficientes, identificado con las curvas de pérdida.</div>
+  </div>
+  <div class="qa">
+    <div class="q">¿Ayudó la regularización?</div>
+    <div class="a">No en el baseline pequeño (no estaba sobreajustando); L1, L2 y dropout individuales quedaron en el mismo rango que sin regularizar. Sería más útil en arquitecturas más grandes.</div>
+  </div>
+  <div class="qa">
+    <div class="q">¿Batch size y epochs?</div>
+    <div class="a">Batch más grande (128) con las mismas épocas empeoró el resultado (menos updates por época). Más épocas (100) sí ayudaron — confirma que varias corridas estaban limitadas por presupuesto de entrenamiento, no por la técnica en sí.</div>
+  </div>
+  <div class="qa">
+    <div class="q">¿MSE vs. MAE vs. RMSE?</div>
+    <div class="a">MSE amplifica los errores grandes (sensible a los distritos con el target capado en 500,001); MAE da una lectura "típica" del error sin que esos casos la dominen; RMSE combina unidades de USD con la sensibilidad a outliers de MSE — por eso se usó como criterio de selección.</div>
+  </div>
+  <div class="qa">
+    <div class="q">¿Modelo de producción?</div>
+    <div class="a">Arquitectura [128,64,32] + Adam con <code>lr</code> intermedio (0.003–0.005) + dropout ligero solo en esa arquitectura más grande + early stopping en vez de épocas fijas. Para seguir optimizando: random search alrededor de esa zona (más eficiente que grid con variables continuas), y bayesiana si el costo por corrida creciera.</div>
+  </div>
+
+  <h2>Pros y contras de esta etapa</h2>
+  <div class="grid2">
+    <div class="card good">
+      <h3>Pros</h3>
+      <ul>
+        <li>La regla "test se toca una sola vez" se cumplió de punta a punta: nunca se
+        usó <code>X_test</code>/<code>y_test</code> para elegir nada hasta esta celda.</li>
+        <li>Las respuestas de discusión citan números concretos de las propias
+        corridas, no afirmaciones genéricas — se pueden verificar releyendo la tabla.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>Límites</h3>
+      <ul>
+        <li>El modelo final se entrenó y evaluó una sola vez (una semilla); el RMSE de
+        test reportado tiene algo de varianza que no se cuantificó (requeriría repetir
+        con más semillas, fuera del alcance del lab).</li>
+        <li>La "mejor" configuración (lr alto) mostró una curva de pérdida ruidosa en
+        el Batch 5 — es la mejor en esta corrida puntual, no necesariamente la más
+        robusta si se repitiera el experimento.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Impedimentos</h2>
+  <p>Ninguno técnico en esta etapa. El único cuidado real fue excluir explícitamente la
+  corrida divergente (SGD, NaN) antes de tomar el mínimo de RMSE — de lo contrario
+  <code>idxmin()</code> habría comparado contra un NaN sin seleccionar nada útil (NaN
+  se ignora naturalmente en <code>pandas</code>, pero se filtró explícitamente para
+  dejar la intención clara en el código).</p>
+
+  <h2>Glosario</h2>
+  <dl class="glossary">
+    <dt>Conjunto de test</dt>
+    <dd>Porción de datos apartada desde el inicio y usada exactamente una vez, al
+    final, para medir qué tan bien generaliza el modelo elegido a datos nunca vistos
+    ni usados para ajustar hiperparámetros.</dd>
+
+    <dt>Generalización</dt>
+    <dd>Capacidad de un modelo de mantener buen desempeño en datos distintos a los que
+    vio durante entrenamiento/validación. Se estima con el conjunto de test.</dd>
+
+    <dt>Random search</dt>
+    <dd>Estrategia de búsqueda de hiperparámetros que muestrea combinaciones al azar
+    dentro de rangos definidos, en vez de probar todas las combinaciones de una grilla
+    fija (grid search). Suele ser más eficiente cuando hay variables continuas.</dd>
+
+    <dt>Optimización bayesiana</dt>
+    <dd>Estrategia de búsqueda que usa los resultados de corridas anteriores para
+    modelar qué región del espacio de hiperparámetros es más prometedora, decidiendo
+    la siguiente combinación a probar de forma informada en vez de al azar.</dd>
+  </dl>
+
+  <footer>
+    <span>Laboratorio #1 — CC3092 Deep Learning y Sistemas Inteligentes</span>
+    <span>Batch 5 de 6 — cierre</span>
+  </footer>
+</div>
