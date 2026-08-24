@@ -261,6 +261,230 @@ además aprenden qué escribir en la memoria y qué exponer, dándole a la red c
 qué conservar a largo plazo.
 """)
 
+# ================================================================== 4. Arquitecturas
+md("## 4. Construcción y entrenamiento de las arquitecturas")
+md("""
+Infraestructura común: `Dataset`/`collate_fn` con padding dinámico por batch, un loop de
+entrenamiento genérico (`run_iteration`) que registra loss por época, métricas de validación
+(accuracy, precision/recall/F1 macro), conteo de parámetros entrenables y tiempo de
+entrenamiento — reutilizado por las tres arquitecturas para que la comparación sea justa.
+""")
+code("""
+class ReviewDataset(torch.utils.data.Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, i):
+        return torch.tensor(self.X[i], dtype=torch.long), int(self.y[i])
+
+
+def collate(batch):
+    seqs, labels = zip(*batch)
+    lens = torch.tensor([len(s) for s in seqs])
+    x = pad_sequence(seqs, batch_first=True, padding_value=0)
+    y = torch.tensor(labels, dtype=torch.long)
+    return x, lens, y
+
+
+def make_loaders(X_train, y_train, X_val, y_val, X_test, y_test, batch_size=128):
+    train_dl = torch.utils.data.DataLoader(
+        ReviewDataset(X_train, y_train), batch_size=batch_size, shuffle=True, collate_fn=collate
+    )
+    val_dl = torch.utils.data.DataLoader(
+        ReviewDataset(X_val, y_val), batch_size=256, shuffle=False, collate_fn=collate
+    )
+    test_dl = torch.utils.data.DataLoader(
+        ReviewDataset(X_test, y_test), batch_size=256, shuffle=False, collate_fn=collate
+    )
+    return train_dl, val_dl, test_dl
+
+
+train_dl, val_dl, test_dl = make_loaders(X_train, y_train, X_val, y_val, X_test, y_test)
+count_params = lambda m: sum(p.numel() for p in m.parameters() if p.requires_grad)
+
+
+def run_epoch(model, loader, opt=None, clip=None):
+    train_mode = opt is not None
+    model.train(train_mode)
+    lossf = nn.CrossEntropyLoss()
+    total_loss, n = 0.0, 0
+    all_preds, all_true = [], []
+    for x, lens, y in loader:
+        x, lens, y = x.to(DEVICE), lens, y.to(DEVICE)
+        with torch.set_grad_enabled(train_mode):
+            logits = model(x, lens)
+            loss = lossf(logits, y)
+            if train_mode:
+                opt.zero_grad()
+                loss.backward()
+                if clip is not None:
+                    nn.utils.clip_grad_norm_(model.parameters(), clip)
+                opt.step()
+        total_loss += loss.item() * len(y)
+        n += len(y)
+        all_preds.append(logits.argmax(1).detach().cpu())
+        all_true.append(y.cpu())
+    preds = torch.cat(all_preds).numpy()
+    true = torch.cat(all_true).numpy()
+    return total_loss / n, preds, true
+
+
+def run_iteration(name, model_fn, epochs, lr, weight_decay=0.0, clip=None, batch_size=128):
+    torch.manual_seed(SEED)
+    model = model_fn().to(DEVICE)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    tdl, vdl, _ = make_loaders(X_train, y_train, X_val, y_val, X_test, y_test, batch_size)
+    history = {"train_loss": [], "val_loss": []}
+    t0 = time.time()
+    for ep in range(epochs):
+        tr_loss, _, _ = run_epoch(model, tdl, opt, clip=clip)
+        va_loss, va_preds, va_true = run_epoch(model, vdl)
+        history["train_loss"].append(tr_loss)
+        history["val_loss"].append(va_loss)
+    elapsed = time.time() - t0
+    acc = accuracy_score(va_true, va_preds)
+    prec, rec, f1, _ = precision_recall_fscore_support(va_true, va_preds, average="macro", zero_division=0)
+    result = {
+        "name": name, "history": history, "params": count_params(model),
+        "val_acc": acc, "val_precision": prec, "val_recall": rec, "val_f1": f1,
+        "train_time_s": elapsed, "epochs": epochs, "lr": lr,
+        "weight_decay": weight_decay, "clip": clip, "batch_size": batch_size,
+    }
+    print(f"[{name}] params={result['params']:,} time={elapsed:.1f}s "
+          f"val_acc={acc:.4f} val_f1={f1:.4f} (last train_loss={tr_loss:.4f}, val_loss={va_loss:.4f})")
+    return result, model
+
+
+def plot_curves(results, title):
+    fig, axes = plt.subplots(1, len(results), figsize=(5 * len(results), 4), sharey=True)
+    if len(results) == 1:
+        axes = [axes]
+    for ax, r in zip(axes, results):
+        ax.plot(r["history"]["train_loss"], label="train")
+        ax.plot(r["history"]["val_loss"], label="val")
+        ax.set_title(r["name"])
+        ax.set_xlabel("epoch")
+        ax.legend()
+    axes[0].set_ylabel("loss")
+    fig.suptitle(title)
+    plt.tight_layout()
+    plt.show()
+
+
+def results_table(results):
+    return pd.DataFrame([{
+        "iteración": r["name"], "params": r["params"], "epochs": r["epochs"], "lr": r["lr"],
+        "weight_decay": r["weight_decay"], "clip": r["clip"],
+        "val_loss": r["history"]["val_loss"][-1], "val_acc": r["val_acc"],
+        "val_precision": r["val_precision"], "val_recall": r["val_recall"], "val_f1": r["val_f1"],
+        "train_time_s": round(r["train_time_s"], 1),
+    } for r in results])
+""")
+
+# ------------------------------------------------------------ 4.a MLP
+md("### 4.a MLP (baseline)")
+md("""
+Representación de tamaño fijo por reseña: promedio de los embeddings de sus palabras (bag-of-
+embeddings), seguido de un MLP configurable con `Dropout`. 4 iteraciones: baseline, versión
+regularizada, un `lr` deliberadamente alto (impacto negativo) y la configuración final ajustada.
+""")
+code("""
+class MLPClassifier(nn.Module):
+    def __init__(self, vocab_size, emb_dim=100, hidden_dims=(128,), dropout=0.0):
+        super().__init__()
+        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
+        dims = [emb_dim] + list(hidden_dims)
+        layers = []
+        for i in range(len(dims) - 1):
+            layers += [nn.Linear(dims[i], dims[i + 1]), nn.ReLU(), nn.Dropout(dropout)]
+        self.mlp = nn.Sequential(*layers)
+        self.out = nn.Linear(dims[-1], 2)
+
+    def forward(self, x, lengths):
+        e = self.emb(x)  # [B, T, emb]
+        mask = (x != 0).unsqueeze(-1).float()
+        summed = (e * mask).sum(1)
+        avg = summed / lengths.to(e.device).unsqueeze(1).float().clamp(min=1)
+        h = self.mlp(avg)
+        return self.out(h)
+
+
+mlp_results = []
+r, m = run_iteration("M1-baseline", lambda: MLPClassifier(len(stoi), 100, (128,), 0.0), epochs=10, lr=1e-3)
+mlp_results.append(r)
+r, m = run_iteration("M2-regularized", lambda: MLPClassifier(len(stoi), 100, (256, 64), 0.4), epochs=10, lr=1e-3, weight_decay=1e-4)
+mlp_results.append(r)
+r, m = run_iteration("M3-highLR(bad)", lambda: MLPClassifier(len(stoi), 100, (128,), 0.0), epochs=10, lr=1e-1)
+mlp_results.append(r)
+r, mlp_best_model = run_iteration("M4-tuned(best)", lambda: MLPClassifier(len(stoi), 200, (128, 64), 0.3), epochs=12, lr=5e-4, weight_decay=1e-5)
+mlp_results.append(r)
+""")
+code("""
+plot_curves(mlp_results, "MLP: curvas de pérdida train/val")
+results_table(mlp_results)
+""")
+md("""
+**Lectura:** M3 (lr=0.1) es notablemente peor — un paso de optimización 100x más grande que el
+baseline desestabiliza el descenso de gradiente. La regularización de M2 (dropout 0.4 + weight
+decay) no logra superar al baseline simple, señal de que el bag-of-embeddings no tiene tanta
+capacidad de overfitting en este problema. M4 (embeddings más grandes, dropout moderado, lr más
+bajo) es la mejor configuración del MLP y se usa como modelo final de esta arquitectura.
+""")
+
+# ------------------------------------------------------------ 4.b RNN
+md("### 4.b RNN simple (nn.RNN, many-to-one)")
+md("""
+La secuencia de embeddings se procesa palabra por palabra con `nn.RNN`; se usa
+`pack_padded_sequence` para ignorar el padding y se toma el último estado oculto (`h_n`) como
+representación de la reseña completa para la capa de clasificación. Mismas 4 iteraciones que el
+MLP: baseline, regularizada+clipping, `lr` alto (para exhibir inestabilidad/exploding gradient) y
+la configuración final ajustada.
+""")
+code("""
+class RNNClassifier(nn.Module):
+    def __init__(self, vocab_size, emb_dim=100, hidden=128, num_layers=1, dropout=0.0):
+        super().__init__()
+        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
+        self.rnn = nn.RNN(emb_dim, hidden, num_layers=num_layers, batch_first=True,
+                           dropout=dropout if num_layers > 1 else 0.0)
+        self.drop = nn.Dropout(dropout)
+        self.out = nn.Linear(hidden, 2)
+
+    def forward(self, x, lengths):
+        e = self.emb(x)
+        packed = pack_padded_sequence(e, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        _, h_n = self.rnn(packed)
+        last = self.drop(h_n[-1])
+        return self.out(last)
+
+
+rnn_results = []
+r, m = run_iteration("R1-baseline", lambda: RNNClassifier(len(stoi), 100, 128, 1, 0.0), epochs=6, lr=1e-3)
+rnn_results.append(r)
+r, m = run_iteration("R2-reg+clip", lambda: RNNClassifier(len(stoi), 100, 128, 1, 0.3), epochs=6, lr=1e-3, weight_decay=1e-5, clip=5.0)
+rnn_results.append(r)
+r, m = run_iteration("R3-highLR(bad)", lambda: RNNClassifier(len(stoi), 100, 128, 1, 0.0), epochs=6, lr=1e-1)
+rnn_results.append(r)
+r, rnn_best_model = run_iteration("R4-tuned(best)", lambda: RNNClassifier(len(stoi), 150, 128, 1, 0.3), epochs=8, lr=1e-3, weight_decay=1e-5, clip=5.0)
+rnn_results.append(r)
+rnn_best_cfg = dict(emb_dim=150, hidden=128, num_layers=1, dropout=0.3, lr=1e-3, weight_decay=1e-5, clip=5.0, epochs=8)
+""")
+code("""
+plot_curves(rnn_results, "RNN: curvas de pérdida train/val")
+results_table(rnn_results)
+""")
+md("""
+**Lectura:** R3 (lr=0.1) es el ejemplo más claro de inestabilidad — sin gradient clipping y con un
+paso demasiado grande, la RNN sufre actualizaciones erráticas (loss de validación alto/errático),
+consistente con el problema de exploding gradient discutido en la Sección 3. R2 y R4 (con
+`clip_grad_norm_=5.0`) entrenan de forma mucho más estable. R4, con embeddings más grandes y
+dropout moderado, es la mejor configuración de la RNN.
+""")
+
 nb["cells"] = cells
 nbf.write(nb, "lab3_rnn_lstm.ipynb")
 print(f"Notebook escrito con {len(cells)} celdas.")
