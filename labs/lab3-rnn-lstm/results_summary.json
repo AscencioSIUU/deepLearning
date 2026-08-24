@@ -1,0 +1,268 @@
+{
+  "mlp": [
+    {
+      "name": "M1-baseline",
+      "params": 2013186,
+      "val_acc": 0.8716,
+      "val_precision": 0.8723743002249156,
+      "val_recall": 0.8715999999999999,
+      "val_f1": 0.8715332178279558,
+      "train_time_s": 5.706322908401489,
+      "epochs": 10,
+      "lr": 0.001,
+      "weight_decay": 0.0,
+      "clip": null,
+      "batch_size": 128
+    },
+    {
+      "name": "M2-regularized",
+      "params": 2042434,
+      "val_acc": 0.87,
+      "val_precision": 0.8726292721442499,
+      "val_recall": 0.87,
+      "val_f1": 0.8697702747646849,
+      "train_time_s": 6.347679138183594,
+      "epochs": 10,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "clip": null,
+      "batch_size": 128
+    },
+    {
+      "name": "M3-highLR(bad)",
+      "params": 2013186,
+      "val_acc": 0.868,
+      "val_precision": 0.8680942321234236,
+      "val_recall": 0.868,
+      "val_f1": 0.8679915514592934,
+      "train_time_s": 5.712855100631714,
+      "epochs": 10,
+      "lr": 0.1,
+      "weight_decay": 0.0,
+      "clip": null,
+      "batch_size": 128
+    },
+    {
+      "name": "M4-tuned(best)",
+      "params": 4034114,
+      "val_acc": 0.868,
+      "val_precision": 0.8680009420824117,
+      "val_recall": 0.868,
+      "val_f1": 0.8679999155199459,
+      "train_time_s": 11.410561800003052,
+      "epochs": 12,
+      "lr": 0.0005,
+      "weight_decay": 1e-05,
+      "clip": null,
+      "batch_size": 128
+    }
+  ],
+  "rnn": [
+    {
+      "name": "R1-baseline",
+      "params": 2029698,
+      "val_acc": 0.6368,
+      "val_precision": 0.6369546162835995,
+      "val_recall": 0.6368,
+      "val_f1": 0.6366974614915314,
+      "train_time_s": 76.22854685783386,
+      "epochs": 6,
+      "lr": 0.001,
+      "weight_decay": 0.0,
+      "clip": null,
+      "batch_size": 128
+    },
+    {
+      "name": "R2-reg+clip",
+      "params": 2029698,
+      "val_acc": 0.6576,
+      "val_precision": 0.657778125192217,
+      "val_recall": 0.6576,
+      "val_f1": 0.6575033337409151,
+      "train_time_s": 77.34738898277283,
+      "epochs": 6,
+      "lr": 0.001,
+      "weight_decay": 1e-05,
+      "clip": 5.0,
+      "batch_size": 128
+    },
+    {
+      "name": "R3-highLR(bad)",
+      "params": 2029698,
+      "val_acc": 0.56,
+      "val_precision": 0.5601294563142664,
+      "val_recall": 0.56,
+      "val_f1": 0.5597630468623432,
+      "train_time_s": 77.27594685554504,
+      "epochs": 6,
+      "lr": 0.1,
+      "weight_decay": 0.0,
+      "clip": null,
+      "batch_size": 128
+    },
+    {
+      "name": "R4-tuned(best)",
+      "params": 3036098,
+      "val_acc": 0.7288,
+      "val_precision": 0.7299922799794133,
+      "val_recall": 0.7288,
+      "val_f1": 0.7284480686970314,
+      "train_time_s": 109.79096603393555,
+      "epochs": 8,
+      "lr": 0.001,
+      "weight_decay": 1e-05,
+      "clip": 5.0,
+      "batch_size": 128
+    }
+  ],
+  "lstm": [
+    {
+      "name": "L1-baseline",
+      "params": 2118018,
+      "val_acc": 0.8324,
+      "val_precision": 0.8324002127361362,
+      "val_recall": 0.8324,
+      "val_f1": 0.8323999731839957,
+      "train_time_s": 422.1366400718689,
+      "epochs": 6,
+      "lr": 0.001,
+      "weight_decay": 0.0,
+      "clip": null,
+      "batch_size": 128
+    },
+    {
+      "name": "L2-reg+clip",
+      "params": 2118018,
+      "val_acc": 0.8256,
+      "val_precision": 0.8380623297229052,
+      "val_recall": 0.8256,
+      "val_f1": 0.8239777792132291,
+      "train_time_s": 432.83359003067017,
+      "epochs": 6,
+      "lr": 0.001,
+      "weight_decay": 1e-05,
+      "clip": 5.0,
+      "batch_size": 128
+    },
+    {
+      "name": "L3-highLR(bad)",
+      "params": 2118018,
+      "val_acc": 0.5536,
+      "val_precision": 0.5543208947672926,
+      "val_recall": 0.5536,
+      "val_f1": 0.5521140218170236,
+      "train_time_s": 418.7411777973175,
+      "epochs": 6,
+      "lr": 0.1,
+      "weight_decay": 0.0,
+      "clip": null,
+      "batch_size": 128
+    },
+    {
+      "name": "L4-tuned(best)",
+      "params": 3143618,
+      "val_acc": 0.8588,
+      "val_precision": 0.860238880546233,
+      "val_recall": 0.8588,
+      "val_f1": 0.8586588623936318,
+      "train_time_s": 1705.6035299301147,
+      "epochs": 8,
+      "lr": 0.001,
+      "weight_decay": 1e-05,
+      "clip": 5.0,
+      "batch_size": 128
+    }
+  ],
+  "final_test": [
+    {
+      "name": "MLP (M4)",
+      "test_acc": 0.85368,
+      "test_precision": 0.8541979428016838,
+      "test_recall": 0.85368,
+      "test_f1": 0.8536264895917567,
+      "confusion_matrix": [
+        [
+          10910,
+          1590
+        ],
+        [
+          2068,
+          10432
+        ]
+      ],
+      "test_loss": 0.4003825237751007
+    },
+    {
+      "name": "RNN (R4)",
+      "test_acc": 0.7352,
+      "test_precision": 0.7365606270835359,
+      "test_recall": 0.7352000000000001,
+      "test_f1": 0.7348186887918271,
+      "confusion_matrix": [
+        [
+          8716,
+          3784
+        ],
+        [
+          2836,
+          9664
+        ]
+      ],
+      "test_loss": 0.5607297458648681
+    },
+    {
+      "name": "LSTM (L4)",
+      "test_acc": 0.84544,
+      "test_precision": 0.8469476423835842,
+      "test_recall": 0.84544,
+      "test_f1": 0.8452719093438699,
+      "confusion_matrix": [
+        [
+          10156,
+          2344
+        ],
+        [
+          1520,
+          10980
+        ]
+      ],
+      "test_loss": 0.4182464605617523
+    }
+  ],
+  "length_experiment": [
+    {
+      "arch": "RNN",
+      "max_len": 50,
+      "val_acc": 0.5952,
+      "test_acc": 0.58968,
+      "test_f1": 0.5892719373982334,
+      "train_time_s": 10.964745044708252
+    },
+    {
+      "arch": "LSTM",
+      "max_len": 50,
+      "val_acc": 0.7736,
+      "test_acc": 0.74564,
+      "test_f1": 0.7456334357146954,
+      "train_time_s": 33.39355182647705
+    },
+    {
+      "arch": "RNN",
+      "max_len": 400,
+      "val_acc": 0.7304,
+      "test_acc": 0.74564,
+      "test_f1": 0.7452698428459219,
+      "train_time_s": 1952.7881219387054
+    },
+    {
+      "arch": "LSTM",
+      "max_len": 400,
+      "val_acc": 0.8388,
+      "test_acc": 0.84432,
+      "test_f1": 0.8443018393665437,
+      "train_time_s": 6120.488576173782
+    }
+  ],
+  "vocab_size": 20000,
+  "max_len_main": 300
+}

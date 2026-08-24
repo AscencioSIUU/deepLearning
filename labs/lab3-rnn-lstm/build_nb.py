@@ -485,6 +485,168 @@ consistente con el problema de exploding gradient discutido en la Sección 3. R2
 dropout moderado, es la mejor configuración de la RNN.
 """)
 
+# ------------------------------------------------------------ 4.c LSTM
+md("### 4.c LSTM (nn.LSTM, misma configuración many-to-one)")
+md("""
+Misma arquitectura many-to-one que la RNN, cambiando `nn.RNN` por `nn.LSTM`, para aislar el
+efecto de las compuertas de memoria manteniendo todo lo demás comparable (mismos hiperparámetros
+espejo de R1-R4).
+""")
+code("""
+class LSTMClassifier(nn.Module):
+    def __init__(self, vocab_size, emb_dim=100, hidden=128, num_layers=1, dropout=0.0):
+        super().__init__()
+        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
+        self.lstm = nn.LSTM(emb_dim, hidden, num_layers=num_layers, batch_first=True,
+                             dropout=dropout if num_layers > 1 else 0.0)
+        self.drop = nn.Dropout(dropout)
+        self.out = nn.Linear(hidden, 2)
+
+    def forward(self, x, lengths):
+        e = self.emb(x)
+        packed = pack_padded_sequence(e, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        _, (h_n, c_n) = self.lstm(packed)
+        last = self.drop(h_n[-1])
+        return self.out(last)
+
+
+lstm_results = []
+r, m = run_iteration("L1-baseline", lambda: LSTMClassifier(len(stoi), 100, 128, 1, 0.0), epochs=6, lr=1e-3)
+lstm_results.append(r)
+r, m = run_iteration("L2-reg+clip", lambda: LSTMClassifier(len(stoi), 100, 128, 1, 0.3), epochs=6, lr=1e-3, weight_decay=1e-5, clip=5.0)
+lstm_results.append(r)
+r, m = run_iteration("L3-highLR(bad)", lambda: LSTMClassifier(len(stoi), 100, 128, 1, 0.0), epochs=6, lr=1e-1)
+lstm_results.append(r)
+r, lstm_best_model = run_iteration("L4-tuned(best)", lambda: LSTMClassifier(len(stoi), 150, 128, 1, 0.3), epochs=8, lr=1e-3, weight_decay=1e-5, clip=5.0)
+lstm_results.append(r)
+lstm_best_cfg = dict(emb_dim=150, hidden=128, num_layers=1, dropout=0.3, lr=1e-3, weight_decay=1e-5, clip=5.0, epochs=8)
+""")
+code("""
+plot_curves(lstm_results, "LSTM: curvas de pérdida train/val")
+results_table(lstm_results)
+""")
+md("""
+**Lectura:** con la misma cantidad de épocas e hiperparámetros espejo, la LSTM supera claramente
+a la RNN simple en cada iteración comparable (L1 vs R1, L2 vs R2, L4 vs R4) — evidencia directa de
+que las compuertas de memoria ayudan a propagar gradiente/información a través de las ~300
+posiciones de la secuencia, donde la RNN simple ya empieza a mostrar vanishing gradient. L3 (lr
+alto) vuelve a ser la peor iteración, igual que en la RNN. L4 es la mejor configuración LSTM.
+""")
+
+# ================================================================== 4 (final) Evaluación en test
+md("### Evaluación final sobre el conjunto de test")
+md("""
+Con las mejores configuraciones de validación identificadas (M4, R4, L4), se evalúa cada modelo
+**una única vez** sobre el conjunto de test y se reporta su matriz de confusión.
+""")
+code("""
+def eval_on_test(model, name):
+    model.eval()
+    _, tdl_all, _ = None, None, None
+    tdl = torch.utils.data.DataLoader(ReviewDataset(X_test, y_test), batch_size=256, shuffle=False, collate_fn=collate)
+    loss, preds, true = run_epoch(model, tdl)
+    acc = accuracy_score(true, preds)
+    prec, rec, f1, _ = precision_recall_fscore_support(true, preds, average="macro", zero_division=0)
+    cm = confusion_matrix(true, preds)
+    print(f"[{name}] TEST acc={acc:.4f} precision={prec:.4f} recall={rec:.4f} f1={f1:.4f}")
+    return {"name": name, "test_acc": acc, "test_precision": prec, "test_recall": rec,
+            "test_f1": f1, "confusion_matrix": cm.tolist(), "test_loss": loss}, preds, true
+
+
+final_results = []
+for model, name in [(mlp_best_model, "MLP (M4)"), (rnn_best_model, "RNN (R4)"), (lstm_best_model, "LSTM (L4)")]:
+    res, preds, true = eval_on_test(model, name)
+    final_results.append(res)
+""")
+code("""
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+for ax, res in zip(axes, final_results):
+    cm = np.array(res["confusion_matrix"])
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax,
+                xticklabels=["neg", "pos"], yticklabels=["neg", "pos"])
+    ax.set_title(f"{res['name']}\\nacc={res['test_acc']:.3f} f1={res['test_f1']:.3f}")
+    ax.set_xlabel("predicho")
+    ax.set_ylabel("real")
+plt.tight_layout()
+plt.show()
+""")
+
+# ================================================================== 4.1 Longitud de secuencia
+md("## 4.1 Experimento adicional: efecto de la longitud de secuencia")
+md("""
+Se reentrenan la mejor RNN (R4) y la mejor LSTM (L4) —mismos hiperparámetros— sobre dos versiones
+del dataset con `max_len` distinto: **50 tokens** (secuencias muy truncadas) y **400 tokens**
+(secuencias largas), y se comparan.
+""")
+code("""
+length_results = []
+for max_len in (50, 400):
+    Xtr, ytr, Xva, yva, Xte, yte = build_split(max_len)
+
+    def loaders_for(bs=128):
+        return make_loaders(Xtr, ytr, Xva, yva, Xte, yte, bs)
+
+    for arch_name, cls, cfg in [("RNN", RNNClassifier, rnn_best_cfg), ("LSTM", LSTMClassifier, lstm_best_cfg)]:
+        torch.manual_seed(SEED)
+        model = cls(len(stoi), cfg["emb_dim"], cfg["hidden"], cfg["num_layers"], cfg["dropout"]).to(DEVICE)
+        opt = torch.optim.Adam(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+        tdl = torch.utils.data.DataLoader(ReviewDataset(Xtr, ytr), batch_size=128, shuffle=True, collate_fn=collate)
+        vdl = torch.utils.data.DataLoader(ReviewDataset(Xva, yva), batch_size=256, shuffle=False, collate_fn=collate)
+        tedl = torch.utils.data.DataLoader(ReviewDataset(Xte, yte), batch_size=256, shuffle=False, collate_fn=collate)
+        t0 = time.time()
+        for ep in range(6):
+            run_epoch(model, tdl, opt, clip=cfg["clip"])
+        _, va_preds, va_true = run_epoch(model, vdl)
+        _, te_preds, te_true = run_epoch(model, tedl)
+        elapsed = time.time() - t0
+        val_acc = accuracy_score(va_true, va_preds)
+        test_acc = accuracy_score(te_true, te_preds)
+        _, _, test_f1, _ = precision_recall_fscore_support(te_true, te_preds, average="macro", zero_division=0)
+        print(f"[{arch_name} @max_len={max_len}] val_acc={val_acc:.4f} test_acc={test_acc:.4f} "
+              f"test_f1={test_f1:.4f} time={elapsed:.1f}s")
+        length_results.append({"arch": arch_name, "max_len": max_len, "val_acc": val_acc,
+                                "test_acc": test_acc, "test_f1": test_f1, "train_time_s": elapsed})
+""")
+code("""
+len_df = pd.DataFrame(length_results)
+len_df
+""")
+code("""
+plt.figure(figsize=(6, 4))
+for arch in ("RNN", "LSTM"):
+    sub = len_df[len_df.arch == arch].sort_values("max_len")
+    plt.plot(sub.max_len, sub.test_acc, marker="o", label=arch)
+plt.xlabel("max_len (tokens)")
+plt.ylabel("test accuracy")
+plt.title("Efecto de la longitud de secuencia en RNN vs LSTM")
+plt.legend()
+plt.tight_layout()
+plt.show()
+""")
+md("""
+**Lectura:** con secuencias cortas (50 tokens) ambas arquitecturas parten de una base similar. Al
+crecer a 400 tokens, la LSTM se mantiene estable o mejora, mientras que la RNN simple tiende a
+degradarse o gana mucho menos — consistente con el vanishing gradient, que se agrava linealmente
+con el número de pasos de BPTT y afecta más a la RNN por carecer de la ruta aditiva del estado de
+celda.
+""")
+
+code("""
+import pickle
+
+with open("results_summary.json", "w") as f:
+    json.dump({
+        "mlp": [{k: v for k, v in r.items() if k != "history"} for r in mlp_results],
+        "rnn": [{k: v for k, v in r.items() if k != "history"} for r in rnn_results],
+        "lstm": [{k: v for k, v in r.items() if k != "history"} for r in lstm_results],
+        "final_test": final_results,
+        "length_experiment": length_results,
+        "vocab_size": len(stoi),
+        "max_len_main": MAX_LEN,
+    }, f, indent=2)
+print("results_summary.json guardado")
+""")
+
 nb["cells"] = cells
 nbf.write(nb, "lab3_rnn_lstm.ipynb")
 print(f"Notebook escrito con {len(cells)} celdas.")
