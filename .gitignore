@@ -7,3 +7,6 @@ labs/lab1-mlp/data/*
 labs/lab2-CNN/data/*
 !labs/lab2-CNN/data/.gitkeep
 .DS_Store
+
+# lab3 venv
+.venv/
