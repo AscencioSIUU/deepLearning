@@ -647,6 +647,100 @@ with open("results_summary.json", "w") as f:
 print("results_summary.json guardado")
 """)
 
-nb["cells"] = cells
-nbf.write(nb, "lab3_rnn_lstm.ipynb")
-print(f"Notebook escrito con {len(cells)} celdas.")
+# ================================================================== 5. Comparación
+md("## 5. Comparación de arquitecturas")
+md("""
+| Modelo (mejor config) | Params | Test acc | Test prec | Test rec | Test F1 | Tiempo entren. |
+|---|---|---|---|---|---|---|
+| MLP (M4) | 4,034,114 | **0.8537** | 0.8542 | 0.8537 | **0.8536** | 11.4s |
+| LSTM (L4) | 3,143,618 | 0.8454 | 0.8469 | 0.8454 | 0.8453 | 1705.6s |
+| RNN (R4) | 3,036,098 | 0.7352 | 0.7366 | 0.7352 | 0.7348 | 109.8s |
+
+**Parámetros vs. calidad:** el MLP tiene *más* parámetros (4.03M) que la LSTM (3.14M) o la RNN
+(3.04M) pero también el mejor accuracy de test — su capacidad extra viene de un vocabulario de
+embeddings más grande (`emb_dim=200`), no de profundidad recurrente. La LSTM logra un accuracy
+casi idéntico (-0.83pp) con **22% menos parámetros**, evidencia de que sus compuertas usan la
+capacidad de forma más eficiente que la RNN, que con una cantidad de parámetros similar a la
+LSTM (3.04M vs. 3.14M) queda **11.85pp** por debajo — la diferencia no es de tamaño sino de
+capacidad efectiva para propagar gradiente/información en 300 pasos.
+
+**Tiempo de entrenamiento:** en este equipo (CPU, ver nota de la Sección 0), MLP << RNN << LSTM
+(11.4s / 109.8s / 1705.6s) — la LSTM tarda ~15x más que la RNN por paso, coherente con sus 4
+compuertas (4 multiplicaciones matriciales por paso) frente a la única transformación de la RNN
+simple; el MLP no tiene recurrencia y paraleliza todo el forward pass, de ahí su enorme ventaja
+de velocidad.
+
+**Experimento de longitud (Sección 4.1):** con 50 tokens ambas arquitecturas parten de una base
+baja y similar (RNN test=0.590, LSTM test=0.746 — la LSTM ya saca ventaja incluso con poco
+contexto). Al crecer a 400 tokens, la RNN mejora (test=0.746) pero solo alcanza lo que la LSTM ya
+lograba con 8x menos contexto; la LSTM sigue escalando y llega a 0.844. La RNN satura su
+capacidad de aprovechar contexto adicional mucho antes que la LSTM.
+""")
+
+# ================================================================== 6. Discusión
+md("## 6. Discusión y análisis")
+md("""
+**¿Qué cambio de hiperparámetro tuvo mayor impacto (+/-) por arquitectura?**
+En el **MLP** las 4 iteraciones quedaron muy cerca en validación (86.8%-87.16%, dentro del ruido
+esperable con 2,500 ejemplos de val) — ningún cambio tuvo impacto claramente positivo ni negativo
+(ni siquiera `lr=0.1`, M3), señal de que el bag-of-embeddings tiene un techo de capacidad ~87%
+independiente de estos ajustes. En **RNN** y **LSTM** el patrón es claro: el mayor impacto
+**positivo** fue subir `emb_dim` + dropout moderado + gradient clipping (R4: +9.2pp vs. baseline;
+L4: +2.6pp vs. baseline). El mayor impacto **negativo** en ambas fue `lr=0.1` sin clipping (R3:
+-7.7pp; L3: **-27.9pp**, casi random) — sin `clip_grad_norm_`, un paso 100x mayor desestabiliza
+el entrenamiento (exploding gradient), y afecta más a la LSTM por tener más parámetros a ajustar
+en su transformación.
+
+**¿La regularización mejoró el desempeño en validación? ¿Qué método funcionó mejor por
+arquitectura?** En el MLP, dropout+weight decay (M2) no superó al baseline (0.870 vs. 0.8716) —
+el modelo no estaba lo bastante sobreajustado como para beneficiarse. En la RNN, gradient
+clipping (R2 vs. R1: +2.1pp) sí ayudó — es casi un requisito, no una opción, dado el exploding
+gradient. En la LSTM, dropout+clipping solos (L2, 6 épocas) quedaron ligeramente por debajo del
+baseline (0.8256 vs. 0.8324); las compuertas ya regulan el flujo de gradiente razonablemente
+bien, así que el dropout adicional resta capacidad sin compensación en pocas épocas — la mejora
+final (L4) vino de combinar más capacidad (`emb_dim`) y más épocas, no solo de regularizar.
+
+**MLP vs. RNN vs. LSTM en test — ¿cuál ganó y por qué?** El **MLP** obtuvo el mejor accuracy de
+test (85.37%), apenas por encima de la LSTM (84.54%) y muy por encima de la RNN (73.52%). Para
+sentimiento en reseñas, buena parte de la señal es léxica ("terrible", "amazing"), y el promedio
+de embeddings ya la captura sin necesitar el orden de las palabras. La RNN simple sí intenta
+modelar el orden pero pierde señal de las primeras palabras de la reseña por vanishing gradient
+en 300 pasos, quedando muy por debajo. La LSTM, gracias a sus compuertas, cierra casi toda la
+brecha con el MLP — validando que la memoria aditiva le permite competir con una representación
+puramente léxica, algo que la RNN simple no logra.
+
+**Sección 4.1 — ¿la RNN pierde desempeño al alargar la secuencia, vs. LSTM?** Contraintuitivamente
+la RNN no empeora al alargar (50→400: val 0.595→0.730), de hecho mejora en puntos porcentuales
+más que la LSTM (50→400: val 0.774→0.839) — con poco contexto (50 tokens) ninguna arquitectura
+tiene mucho que aprovechar. Lo relevante es el **techo**: a 400 tokens la LSTM (test=0.844) supera
+por mucho a la RNN (test=0.746), que apenas alcanza lo que la LSTM ya lograba con 50 tokens. Esto
+es exactamente lo esperado del vanishing gradient: cada paso adicional de BPTT más allá de cierto
+punto aporta cada vez menos gradiente útil a la RNN simple, mientras la ruta aditiva de la LSTM
+sigue extrayendo señal de posiciones lejanas.
+
+**¿En qué reseñas se equivocan más los modelos?** De las matrices de confusión de test: el MLP
+comete más falsos negativos que falsos positivos (2,068 vs. 1,590 — tiende a leer reseñas
+positivas como negativas), mientras RNN y LSTM cometen más falsos positivos (RNN: 3,784 vs. 2,836;
+LSTM: 2,344 vs. 1,520 — tienden a leer negativas como positivas). Sin inspección de texto
+individual, el patrón es consistente con la intuición de dominio: reseñas con **sentimiento
+mixto o sarcasmo** ("la actuación fue genial pero la trama es un desastre") son el caso clásico
+donde ni el promedio léxico (MLP) ni el resumen del último estado oculto (RNN/LSTM) capturan bien
+cuál polaridad domina — el RNN, al ser el modelo más débil en general, arrastra el doble de
+errores totales que la LSTM (6,620 vs. 3,864 de 25,000).
+
+**Modelo de producción priorizando exactitud y eficiencia:** el **MLP**. Gana en accuracy de test
+sobre los tres, y es ~10x más rápido de entrenar que la RNN y ~150x más rápido que la LSTM en
+este equipo — su forward pass no tiene recurrencia, paraleliza completamente y no requiere
+iterar 300 pasos secuenciales por reseña en inferencia. La LSTM sería la alternativa razonable si
+se necesitara modelar negación/orden explícitamente más allá del promedio léxico (segundo mejor
+accuracy), aceptando su costo notablemente mayor. La RNN simple no se justifica en ningún
+escenario aquí: peor accuracy que ambas y sigue siendo secuencial en inferencia, heredando el
+costo sin el beneficio. Con más datos y presupuesto de cómputo, un Transformer preentrenado
+(fine-tuning) probablemente superaría a los tres, pero para este dataset de tamaño moderado y con
+restricciones de eficiencia, el MLP bag-of-embeddings es la elección pragmática.
+""")
+
+if __name__ == "__main__":
+    nb["cells"] = cells
+    nbf.write(nb, "lab3_rnn_lstm.ipynb")
+    print(f"Notebook escrito con {len(cells)} celdas.")

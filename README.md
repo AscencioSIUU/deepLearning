@@ -31,6 +31,10 @@ curl -sL -o labs/lab1-mlp/data/housing.csv \
   PyTorch sobre el dataset California Housing Prices. Explicadores de cada etapa en
   [`labs/lab1-mlp/docs/`](labs/lab1-mlp/docs/). Reporte final (PDF):
   [`Reporte - Laboratorio 1 MLP.pdf`](Reporte%20-%20Laboratorio%201%20MLP.pdf).
+- [Lab #3 — RNN y LSTM](labs/lab3-rnn-lstm/lab3_rnn_lstm.ipynb): clasificación de sentimiento
+  sobre IMDB Reviews comparando MLP (bag-of-embeddings), RNN simple y LSTM (many-to-one),
+  16 iteraciones y experimento de longitud de secuencia. Reporte final:
+  [`reporte.pdf`](labs/lab3-rnn-lstm/reporte.pdf).
 
 ## Proyectos
 
