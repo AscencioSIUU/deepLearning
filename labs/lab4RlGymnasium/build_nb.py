@@ -594,6 +594,94 @@ posición del carro, que termina saliéndose de los límites, y no anticipa (sol
 reacciona al signo). El análisis completo está en la sección 4 del reporte.
 """)
 
+# ================================================================== 4. Discusión
+md("""
+## 4. Discusión y análisis
+
+### ¿Qué diferencias hubo entre el agente aleatorio en CartPole-v1 y en FrozenLake-v1? ¿Cómo se relaciona con la naturaleza de cada entorno?
+
+El agente aleatorio en **CartPole-v1** acumula una recompensa media de ~21
+(hasta 34 en el mejor episodio de 20): siempre obtiene *algo*. En
+**FrozenLake-v1** llega a la meta solo **1 de 50 veces** (return medio 0.02) y el
+resto de episodios terminan con 0. La diferencia está en la **estructura de la
+recompensa**, no en la dificultad "física":
+
+- CartPole tiene recompensa **densa**: +1 en *cada* paso hasta que el poste cae.
+  Cualquier política, incluso una mala, sobrevive unos pasos y suma recompensa;
+  el return degrada suavemente con la calidad de las acciones.
+- FrozenLake tiene recompensa **dispersa (*sparse*) y binaria**: +1 solo si se
+  alcanza exactamente la meta, 0 en cualquier otro caso (incluido caer en un
+  agujero). No hay señal intermedia. Además, con `is_slippery=True` la dinámica
+  es **estocástica**. El éxito exige una secuencia de ~6 acciones acertadas por
+  un corredor rodeado de agujeros; al azar eso pasa un ~2% de las veces y por
+  suerte, no por estrategia.
+
+Esto también anticipa la dificultad de *aprender* en cada uno: en CartPole el
+gradiente de recompensa guía casi cualquier método; en FrozenLake un agente que
+aprende necesita exploración dirigida o shaping de recompensa para siquiera
+encontrar la señal.
+
+### ¿La política heurística superó al agente aleatorio? ¿Qué dice sobre incorporar conocimiento del dominio vs. aprender desde cero?
+
+Sí, y por mucho: **~199 vs. ~27** de recompensa media en 5 episodios (7× mejor),
+con una **sola regla** —empujar hacia el lado al que se está cayendo el poste,
+mirando el signo de la velocidad angular— y **cero entrenamiento**. Con cuatro
+números de conocimiento del dominio (qué componente de la observación importa y
+en qué dirección actuar) se resuelve gran parte del problema.
+
+Lectura: cuando el conocimiento del dominio es barato y confiable, es la vía más
+eficiente en muestras — un agente de RL desde cero necesitaría **miles de
+episodios** para redescubrir esta misma relación. El límite aparece en el techo:
+la heurística se estanca en ~200/500 porque ignora la posición del carro y solo
+*reacciona* (no anticipa). Un agente aprendido puede superar ese techo porque
+optimiza el objetivo real (equilibrio *y* posición) sin que nadie tenga que
+codificar la regla completa — que en problemas más complejos puede ser
+desconocida o imposible de escribir a mano. La heurística es un excelente
+**baseline** y punto de partida (imitation / warm-start), no el destino.
+
+### ¿Por qué explorar incluso con una política razonable? (exploración vs. explotación)
+
+Porque "razonable" no es "óptima", y una política solo puede mejorar sobre lo
+que **observa**. Si el agente siempre explota su política actual (siempre empuja
+según `theta_dot`), nunca genera las transiciones que le mostrarían que
+controlar también la posición del carro da más recompensa: esos estados quedan
+fuera de su distribución de datos y sus valores nunca se corrigen. La política
+se estanca en un **óptimo local** (~200) que *parece* el mejor solo porque no se
+ha probado nada distinto.
+
+Explorar cuesta recompensa a corto plazo (una acción exploratoria puede tirar el
+poste antes), pero es la única forma de descubrir que existe algo mejor. Ese es
+el dilema **exploración vs. explotación**: explotar asegura la recompensa
+conocida, explorar apuesta esa recompensa por información que puede valer más a
+largo plazo. Métodos como ε-greedy o softmax mantienen algo de exploración
+justamente para que una política "razonable pero mejorable" no se congele.
+
+### ¿Qué entorno de la sección 2 es más interesante para entrenar un agente en un lab futuro?
+
+**MountainCar-v0** como punto medio ideal. Justificación por complejidad de
+espacios:
+
+- **CartPole-v1** (`Box(4,)` / `Discrete(2)`): tan fácil que una heurística de una
+  línea ya lo casi-resuelve; deja poco margen para que se luzca el aprendizaje.
+- **FrozenLake-v1** (`Discrete(16)` / `Discrete(4)`): espacio minúsculo y tabular
+  —Q-Learning tabular lo resuelve en pocas líneas— pero su recompensa dispersa
+  enseña bien el problema de exploración. Buen primer entorno para Q-Learning
+  tabular.
+- **MountainCar-v0** (`Box(2,)` / `Discrete(3)`): observación continua (obliga a
+  discretizar el estado o usar aproximación de funciones) y recompensa
+  **engañosa** (−1 por paso hasta llegar): la acción greedy inmediata nunca es
+  "subir directo", hay que aprender a ir hacia atrás primero para tomar impulso.
+  Combina un espacio manejable con un problema de crédito temporal y exploración
+  real, sin el costo de simulación de Box2D.
+- **LunarLander-v3** (`Box(8,)` / `Discrete(4)`): el más realista, pero su
+  observación de 8 dimensiones y su recompensa compuesta lo hacen más apropiado
+  para DQN/PPO que para un primer lab de RL tabular o de aproximación simple.
+
+MountainCar-v0 fuerza a enfrentar discretización/aproximación de un `Box`
+continuo y exploración no trivial, que son exactamente los conceptos que un
+segundo lab de RL debería consolidar.
+""")
+
 # ================================================================== build
 nb["cells"] = cells
 nb["metadata"] = {
