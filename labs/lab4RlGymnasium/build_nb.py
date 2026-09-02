@@ -224,6 +224,181 @@ acción `a` se haya elegido explorando (p. ej. ε-greedy).
   de funciones [SB, §3.4, 6.5].
 """)
 
+# ================================================================== 2. Gymnasium
+md("""
+## 2. La librería Gymnasium
+
+Investigación documentada con celdas de código que ilustran cada punto.
+
+**Referencias**
+
+- [GYM] Gymnasium documentation. <https://gymnasium.farama.org/>
+- [GYM-ENV] *Gymnasium — Env API*. <https://gymnasium.farama.org/api/env/>
+- [GYM-SPACES] *Gymnasium — Spaces*. <https://gymnasium.farama.org/api/spaces/>
+- [GYM-WRAP] *Gymnasium — Wrappers*. <https://gymnasium.farama.org/api/wrappers/>
+- [FARAMA] Farama Foundation, "Announcing the Farama Foundation", 2022.
+  <https://farama.org/Announcing-The-Farama-Foundation>
+""")
+
+md("""
+### ¿Qué es Gymnasium y qué problema resuelve? ¿Cómo se relaciona con OpenAI Gym?
+
+Gymnasium es una librería de Python que define una **API estándar para entornos
+de aprendizaje por refuerzo** y provee una colección de entornos de referencia
+que la implementan [GYM]. El problema que resuelve es de **interoperabilidad**:
+antes, cada entorno y cada algoritmo tenían su propia interfaz; con la API
+común (`reset`, `step`, `render`, espacios de observación/acción autodescritos)
+un mismo agente puede entrenarse en cualquier entorno compatible sin cambiar el
+código de interacción, y los resultados son comparables entre trabajos.
+
+Gymnasium es el **fork mantenido de OpenAI Gym**. OpenAI dejó de mantener Gym en
+2021 y en 2022 la **Farama Foundation** tomó el desarrollo bajo el nombre
+Gymnasium [FARAMA]. Es un reemplazo directo (`import gymnasium as gym`) con
+algunos cambios de API respecto a las últimas versiones de Gym, sobre todo que
+`step()` devuelve **cinco** valores separando `terminated` y `truncated` (antes
+un único `done`), y `reset()` devuelve `(observation, info)` y acepta `seed=`.
+""")
+
+md("### Instalación y verificación de versión")
+code("""
+import gymnasium as gym
+print("gymnasium:", gym.__version__)
+""")
+
+md("""
+### Estructura básica de un entorno (`Env`)
+
+| Método | Recibe | Devuelve | Para qué |
+|---|---|---|---|
+| `reset(seed=None, options=None)` | semilla opcional | `(observation, info)` | inicia un episodio nuevo y entrega la observación inicial |
+| `step(action)` | una acción del `action_space` | `(observation, reward, terminated, truncated, info)` | avanza un paso de simulación aplicando la acción |
+| `render()` | — | frame RGB / None (según `render_mode`) | produce una visualización del estado actual |
+| `close()` | — | `None` | libera recursos (ventanas, procesos, archivos) |
+
+La tupla de `step()` [GYM-ENV]:
+
+- **`observation`** — nueva observación del entorno, elemento del `observation_space`.
+- **`reward`** — recompensa escalar (`float`) obtenida por esa transición.
+- **`terminated`** — `bool`; `True` si el episodio llegó a un **estado terminal
+  del MDP** (meta alcanzada, poste caído, agente muerto). Aquí `γ` no debe
+  descontar un valor futuro: no hay futuro.
+- **`truncated`** — `bool`; `True` si el episodio se cortó por una condición
+  **externa al MDP**, típicamente el límite de pasos (`TimeLimit`). El estado no
+  es terminal; hay valor futuro que un algoritmo de bootstrapping sí debería
+  considerar.
+- **`info`** — `dict` con diagnósticos auxiliares (no se debe usar para
+  aprender): recompensas parciales, métricas, etc.
+
+El episodio termina cuando `terminated or truncated`.
+""")
+
+code("""
+env = gym.make("CartPole-v1")
+obs, info = env.reset(seed=0)
+print("obs inicial:", obs, "| info:", info)
+obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+print("tras 1 step -> obs:", obs)
+print("reward:", reward, "| terminated:", terminated, "| truncated:", truncated, "| info:", info)
+env.close()
+""")
+
+md("""
+### Espacios de observación y acción (`Spaces`)
+
+Un `Space` describe el formato válido de observaciones/acciones y sabe
+`sample()` (muestra aleatoria) y `contains(x)` (validación) [GYM-SPACES].
+
+- **`Discrete(n, start=0)`** — un entero en `{start, …, start+n−1}`. Un solo
+  valor categórico. Se usa para conjuntos finitos de acciones (izquierda/derecha)
+  o de estados enumerados (la casilla en una grilla). Ej.: acción de CartPole-v1
+  (`Discrete(2)`), observación de FrozenLake-v1 (`Discrete(16)`).
+- **`Box(low, high, shape, dtype)`** — vector/tensor de reales (o enteros)
+  acotado por `low`/`high` (pueden ser `±inf`) elemento a elemento. Se usa para
+  magnitudes continuas: observaciones físicas (posición, velocidad, ángulo),
+  imágenes (`Box(0, 255, (H,W,3), uint8)`), acciones continuas (torque). Ej.:
+  observación de CartPole-v1 (`Box(4,)`), acción de Pendulum-v1 (`Box(1,)`).
+- **`MultiDiscrete(nvec)`** — vector de enteros, cada componente `i` en
+  `{0, …, nvec[i]−1}`; es un producto de varios `Discrete` independientes. Se usa
+  cuando la acción/observación tiene **varias dimensiones categóricas
+  simultáneas**: p. ej. un gamepad (`[cruceta(5), botónA(2), botónB(2)]`) o los
+  controles del entorno Atari con `full_action_space` factorizado.
+
+Otros: `MultiBinary`, `Tuple`, `Dict`, `Text`, `Sequence`, `Graph`.
+""")
+
+code("""
+from gymnasium.spaces import Discrete, Box, MultiDiscrete
+import numpy as np
+
+d = Discrete(4)
+b = Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
+m = MultiDiscrete([5, 2, 2])
+for s in (d, b, m):
+    x = s.sample()
+    print(f"{str(s):32s} sample={x}  contains(sample)={s.contains(x)}")
+""")
+
+md("""
+### Catálogo de entornos — 4 entornos de distintas familias
+
+| Entorno (familia) | Objetivo | `observation_space` | `action_space` |
+|---|---|---|---|
+| **CartPole-v1** (Classic Control) | mantener un poste en equilibrio sobre un carro moviéndolo izq/der; +1 por paso, hasta 500 | `Box(4,)`: posición y velocidad del carro, ángulo y velocidad angular del poste | `Discrete(2)`: empujar izquierda / derecha |
+| **MountainCar-v0** (Classic Control) | llevar un carro sin potencia a la cima de una colina acumulando impulso; −1 por paso hasta llegar (máx. 200) | `Box(2,)`: posición ∈[−1.2, 0.6] y velocidad ∈[−0.07, 0.07] | `Discrete(3)`: acelerar izq / no acelerar / acelerar der |
+| **FrozenLake-v1** (Toy Text) | cruzar una grilla 4×4 helada del inicio a la meta sin caer en un agujero; +1 solo al llegar a la meta | `Discrete(16)`: índice de la casilla actual | `Discrete(4)`: mover izq / abajo / der / arriba (resbaladizo si `is_slippery=True`) |
+| **LunarLander-v3** (Box2D) | aterrizar un módulo lunar suavemente sobre la plataforma; recompensa por acercarse/aterrizar, penaliza chocar y gastar combustible | `Box(8,)`: posición (x,y), velocidad (vx,vy), ángulo y vel. angular, 2 flags de contacto de patas | `Discrete(4)` (motor apagado / izq / principal / der) — o `Box(2,)` en la variante continua |
+
+CartPole/MountainCar/FrozenLake vienen instalados con
+`gymnasium[classic-control,toy-text]`; LunarLander requiere el extra `box2d`.
+""")
+
+code("""
+for name in ["CartPole-v1", "MountainCar-v0", "FrozenLake-v1"]:
+    e = gym.make(name)
+    print(f"{name:16s} obs={e.observation_space}  act={e.action_space}  "
+          f"max_episode_steps={e.spec.max_episode_steps}")
+    e.close()
+""")
+
+md("""
+### ¿Qué es un *wrapper*?
+
+Un wrapper envuelve un `Env` y **modifica su comportamiento sin tocar el código
+del entorno**, exponiendo la misma API `Env` (patrón decorador). Se apilan: al
+hacer `gym.make("CartPole-v1")` el objeto ya viene envuelto en
+`TimeLimit(OrderEnforcing(PassiveEnvChecker(CartPoleEnv)))` [GYM-WRAP]. Sirven
+para transformar observaciones, acciones o recompensas, y para añadir
+funcionalidad transversal. Ejemplos:
+
+- **`TimeLimit`** — pone `truncated=True` al alcanzar `max_episode_steps`
+  (500 en CartPole-v1), evitando episodios infinitos.
+- **`RecordVideo`** — graba episodios a archivos `.mp4` para inspección.
+- **`RecordEpisodeStatistics`** — agrega a `info` el retorno y la longitud de
+  cada episodio al terminar.
+- **Normalización** — `NormalizeObservation` / `NormalizeReward` mantienen media
+  y varianza corrientes y estandarizan; `RescaleAction`, `ClipAction`,
+  `FrameStackObservation`, `GrayscaleObservation`, `ResizeObservation` son otros
+  comunes en visión/control.
+""")
+
+code("""
+from gymnasium.wrappers import TimeLimit
+
+base = gym.make("CartPole-v1")
+print("cadena de wrappers:", base)
+short = TimeLimit(gym.make("CartPole-v1").unwrapped, max_episode_steps=10)
+short.reset(seed=0)
+steps = 0
+while True:
+    _, _, term, trunc, _ = short.step(short.action_space.sample())
+    steps += 1
+    if term or trunc:
+        break
+print(f"con TimeLimit(max=10): el episodio se cortó en {steps} pasos "
+      f"(truncated={trunc}, terminated={term})")
+base.close(); short.close()
+""")
+
 # ================================================================== build
 nb["cells"] = cells
 nb["metadata"] = {

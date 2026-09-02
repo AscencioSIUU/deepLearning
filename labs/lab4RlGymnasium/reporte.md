@@ -65,3 +65,48 @@ futuro estimado). Es off-policy por el `max_{a'}` aunque `a` se haya elegido exp
 (tasa de aprendizaje) es el tamaño de paso hacia ese objetivo: alta → rápido pero oscila; baja →
 lento pero estable. `γ` pondera el término futuro `max_{a'}Q(s',a')`: `γ→0` miope, `γ→1`
 previsor pero de propagación más lenta.
+
+## 2. La librería Gymnasium
+
+**Qué es y relación con OpenAI Gym.** Gymnasium define una *API estándar* para entornos de RL y
+provee entornos de referencia que la implementan. Resuelve la *interoperabilidad*: con una
+interfaz común (`reset`, `step`, espacios autodescritos) un mismo agente corre en cualquier
+entorno compatible y los resultados son comparables. Es el fork mantenido de OpenAI Gym: OpenAI
+dejó de mantener Gym en 2021 y la Farama Foundation continuó el desarrollo como Gymnasium en 2022.
+Reemplazo directo (`import gymnasium as gym`); el cambio de API principal es que `step()` devuelve
+cinco valores, separando `terminated` de `truncated` (antes un único `done`), y `reset()` devuelve
+`(obs, info)` y acepta `seed=`. (Gymnasium docs; Farama Foundation, 2022).
+
+**Estructura de un `Env`.** `reset(seed, options) → (observation, info)` inicia un episodio.
+`step(action) → (observation, reward, terminated, truncated, info)` avanza un paso. `render()`
+produce una visualización según `render_mode`. `close()` libera recursos. La tupla de `step()`:
+*observation* (elemento del `observation_space`); *reward* (`float`); *terminated* (`True` en
+estado terminal del MDP — meta, poste caído; no hay valor futuro); *truncated* (`True` por corte
+externo, típicamente el límite de pasos de `TimeLimit`; el estado no es terminal); *info* (`dict`
+de diagnóstico, no para aprender). El episodio acaba con `terminated or truncated`.
+
+**Spaces.** `Discrete(n, start=0)`: un entero en un rango finito — un valor categórico; acciones
+izquierda/derecha, estados enumerados de una grilla (acción de CartPole `Discrete(2)`, obs de
+FrozenLake `Discrete(16)`). `Box(low, high, shape, dtype)`: tensor de reales acotado elemento a
+elemento (`±inf` permitido) — magnitudes continuas: observaciones físicas, imágenes
+`Box(0,255,(H,W,3),uint8)`, torques (obs de CartPole `Box(4,)`). `MultiDiscrete(nvec)`: vector de
+enteros, componente `i` en `{0..nvec[i]−1}` — producto de varios `Discrete` para acciones con
+varias dimensiones categóricas simultáneas (gamepad `[5,2,2]`, acción factorizada de Atari).
+También `MultiBinary`, `Tuple`, `Dict`.
+
+**Catálogo — 4 entornos.**
+
+| Entorno (familia) | Objetivo | Observación | Acción |
+|---|---|---|---|
+| CartPole-v1 (Classic Control) | equilibrar un poste sobre un carro; +1/paso hasta 500 | `Box(4,)`: pos. y vel. del carro, ángulo y vel. angular del poste | `Discrete(2)`: izq / der |
+| MountainCar-v0 (Classic Control) | subir un carro sin potencia a la cima acumulando impulso; −1/paso (máx. 200) | `Box(2,)`: posición ∈[−1.2,0.6], velocidad ∈[−0.07,0.07] | `Discrete(3)`: acel. izq / nada / acel. der |
+| FrozenLake-v1 (Toy Text) | cruzar una grilla 4×4 helada del inicio a la meta sin caer en un agujero; +1 solo al llegar | `Discrete(16)`: casilla actual | `Discrete(4)`: izq/abajo/der/arriba (resbala si `is_slippery`) |
+| LunarLander-v3 (Box2D) | aterrizar un módulo lunar sobre la plataforma; premia acercarse/aterrizar, penaliza chocar y gastar combustible | `Box(8,)`: pos. (x,y), vel. (vx,vy), ángulo, vel. angular, 2 flags de contacto | `Discrete(4)` motores (o `Box(2,)` continuo) |
+
+**Wrappers.** Un wrapper envuelve un `Env` y modifica su comportamiento sin tocar el código del
+entorno, exponiendo la misma API (patrón decorador); se apilan — `gym.make("CartPole-v1")` ya
+devuelve `TimeLimit(OrderEnforcing(PassiveEnvChecker(CartPoleEnv)))`. Ejemplos: `TimeLimit` pone
+`truncated=True` al llegar a `max_episode_steps`; `RecordVideo` graba episodios a `.mp4`;
+`RecordEpisodeStatistics` agrega retorno y longitud a `info`; `NormalizeObservation` /
+`NormalizeReward` estandarizan con media y varianza corrientes (además de `RescaleAction`,
+`ClipAction`, `FrameStackObservation`, `GrayscaleObservation`).
