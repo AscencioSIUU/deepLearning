@@ -110,3 +110,28 @@ devuelve `TimeLimit(OrderEnforcing(PassiveEnvChecker(CartPoleEnv)))`. Ejemplos: 
 `RecordEpisodeStatistics` agrega retorno y longitud a `info`; `NormalizeObservation` /
 `NormalizeReward` estandarizan con media y varianza corrientes (además de `RescaleAction`,
 `ClipAction`, `FrameStackObservation`, `GrayscaleObservation`).
+
+## 3. Módulo de prueba: resultados
+
+**CartPole-v1.** `observation_space = Box(4,) float32` — pos. carro ±4.8, ángulo poste ±0.418 rad,
+velocidades ±inf; `action_space = Discrete(2)` (0 izq, 1 der). La recompensa es +1 por paso, así
+que el return del episodio = pasos sobrevividos.
+
+**FrozenLake-v1** (segundo entorno, `is_slippery=True`). `observation_space = Discrete(16)`,
+`action_space = Discrete(4)`. Recompensa +1 solo al alcanzar la meta, 0 en todo lo demás.
+
+| Entorno / agente | Episodios | Return medio | Pasos medios | Éxito |
+|---|---|---|---|---|
+| CartPole-v1 / aleatorio | 20 | 20.7 ± 6.6 | 20.7 | — (máx. 500) |
+| CartPole-v1 / aleatorio | 5 | 27.2 | 27.2 | — |
+| CartPole-v1 / heurística (signo de la vel. angular) | 5 | **199.0** | 199.0 | — |
+| FrozenLake-v1 / aleatorio | 50 | 0.02 | 7.2 | **1 / 50 (2%)** |
+
+![CartPole-v1, agente aleatorio: recompensa total por episodio](figs/cartpole_random.png){width=49%}
+![CartPole-v1: agente aleatorio vs. política heurística (5 episodios)](figs/cartpole_random_vs_heuristic.png){width=49%}
+
+El agente aleatorio en CartPole-v1 sobrevive ~10–35 pasos por episodio. En FrozenLake-v1 llega a
+la meta solo 1 de 50 veces —por suerte, no por estrategia—: la recompensa es dispersa y binaria y
+el hielo es estocástico, así que el azar casi no obtiene nada. La política heurística de una sola
+regla (empujar hacia donde cae el poste según el signo de `theta_dot`, sin aprendizaje) sube la
+recompensa media de 27 a ~199 en CartPole-v1.

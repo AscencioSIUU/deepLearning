@@ -399,6 +399,201 @@ print(f"con TimeLimit(max=10): el episodio se cortó en {steps} pasos "
 base.close(); short.close()
 """)
 
+# ================================================================== 3. Módulo de prueba
+md("""
+## 3. Módulo de prueba: primeros pasos con Gymnasium
+
+Módulo exploratorio. No se entrena ningún agente: el objetivo es practicar la
+API y observar el comportamiento de agentes simples.
+""")
+
+md("### 3.0. Setup")
+code("""
+import numpy as np
+import matplotlib.pyplot as plt
+import gymnasium as gym
+from pathlib import Path
+
+FIGS = Path("figs"); FIGS.mkdir(exist_ok=True)
+RNG_SEED = 42
+print("gymnasium:", gym.__version__)
+""")
+
+md("### 3.1. CartPole-v1: espacios de observación y acción")
+code("""
+def describe_space(space):
+    kind = type(space).__name__
+    if isinstance(space, gym.spaces.Box):
+        return (f"{kind}  shape={space.shape}  dtype={space.dtype}\\n"
+                f"      low  = {np.array2string(space.low,  precision=3)}\\n"
+                f"      high = {np.array2string(space.high, precision=3)}")
+    if isinstance(space, gym.spaces.Discrete):
+        return f"{kind}  n={space.n}  valores enteros en [{space.start}, {space.start + space.n - 1}]"
+    return f"{kind}  {space}"
+
+
+env = gym.make("CartPole-v1")
+print("observation_space:", describe_space(env.observation_space))
+print()
+print("action_space     :", describe_space(env.action_space))
+print()
+print("Componentes de la observación: [pos. carro, vel. carro, ángulo poste (rad), vel. angular poste]")
+print("Acciones: 0 = empujar a la izquierda, 1 = empujar a la derecha")
+env.close()
+""")
+md("""
+La observación es un `Box(4,)` de `float32`: la posición del carro está acotada a
+±4.8 y el ángulo del poste a ±0.418 rad (±24°), mientras que las dos velocidades
+son ilimitadas (`±inf`). La acción es `Discrete(2)`. El episodio termina
+(`terminated`) si el poste pasa de ±12° o el carro se sale de ±2.4, y se trunca
+(`truncated`) a los 500 pasos.
+""")
+
+md("### 3.2. Agente aleatorio en CartPole-v1")
+code("""
+def run_episodes(env, policy, n_episodes, seed=0, render=False):
+    \"\"\"Corre n episodios completos. policy(obs, env) -> action.
+    Devuelve (steps_por_episodio, return_por_episodio).\"\"\"
+    steps_hist, return_hist = [], []
+    for ep in range(n_episodes):
+        obs, _ = env.reset(seed=seed + ep)
+        done, steps, total = False, 0, 0.0
+        while not done:
+            action = policy(obs, env)
+            obs, reward, terminated, truncated, _ = env.step(action)
+            total += reward
+            steps += 1
+            done = terminated or truncated
+        steps_hist.append(steps)
+        return_hist.append(total)
+    return np.array(steps_hist), np.array(return_hist)
+
+
+def random_policy(obs, env):
+    return env.action_space.sample()
+
+
+N_EP = 20  # el enunciado pide >= 5; usamos 20 para una media más estable
+env = gym.make("CartPole-v1")
+cp_rand_steps, cp_rand_ret = run_episodes(env, random_policy, N_EP, seed=RNG_SEED)
+env.close()
+
+for i, (s, r) in enumerate(zip(cp_rand_steps, cp_rand_ret), 1):
+    print(f"  episodio {i:2d}: pasos sobrevividos = {s:3d}   recompensa total (return) = {r:6.1f}")
+print(f"\\nCartPole-v1 / agente aleatorio ({N_EP} episodios): "
+      f"return medio = {cp_rand_ret.mean():.1f} ± {cp_rand_ret.std():.1f}  "
+      f"(min {cp_rand_ret.min():.0f}, max {cp_rand_ret.max():.0f})")
+""")
+md("""
+En CartPole-v1 la recompensa es +1 por paso, así que **el return de cada
+episodio es igual a los pasos sobrevividos**. El agente aleatorio aguanta
+típicamente entre 10 y 40 pasos antes de que el poste caiga: muy lejos de los
+500 posibles.
+""")
+
+md("### 3.3. Gráfica: recompensa total por episodio (CartPole-v1, agente aleatorio)")
+code("""
+fig, ax = plt.subplots(figsize=(7, 3.5))
+eps = np.arange(1, N_EP + 1)
+ax.bar(eps, cp_rand_ret, color="#4C72B0", alpha=0.85)
+ax.axhline(cp_rand_ret.mean(), color="#C44E52", ls="--",
+           label=f"media = {cp_rand_ret.mean():.1f}")
+ax.set_xlabel("episodio"); ax.set_ylabel("recompensa total (return)")
+ax.set_title("CartPole-v1 — agente aleatorio")
+ax.set_xticks(eps); ax.legend()
+fig.tight_layout()
+fig.savefig(FIGS / "cartpole_random.png", dpi=130)
+plt.show()
+""")
+
+md("### 3.4. Agente aleatorio en un segundo entorno discreto: FrozenLake-v1")
+code("""
+# FrozenLake-v1: grilla 4x4, observación Discrete(16), acción Discrete(4),
+# is_slippery=True (por defecto) -> el hielo desvía el movimiento de forma estocástica.
+N_EP_FL = 50  # >= 5; más episodios para estimar una tasa de éxito con sentido
+
+env = gym.make("FrozenLake-v1", is_slippery=True)
+print("observation_space:", describe_space(env.observation_space))
+print("action_space     :", describe_space(env.action_space), " (0=izq, 1=abajo, 2=der, 3=arriba)")
+
+fl_rand_steps, fl_rand_ret = run_episodes(env, random_policy, N_EP_FL, seed=RNG_SEED)
+env.close()
+
+success = fl_rand_ret > 0  # en FrozenLake reward=1 solo si se alcanza la meta
+print(f"\\nFrozenLake-v1 / agente aleatorio ({N_EP_FL} episodios):")
+print(f"  episodios que alcanzaron la meta: {success.sum()} / {N_EP_FL}  "
+      f"(tasa de éxito = {success.mean()*100:.0f}%)")
+print(f"  pasos por episodio: media = {fl_rand_steps.mean():.1f}  (min {fl_rand_steps.min()}, max {fl_rand_steps.max()})")
+print(f"  return medio = {fl_rand_ret.mean():.3f}")
+""")
+code("""
+fig, ax = plt.subplots(figsize=(7, 3.5))
+eps = np.arange(1, N_EP_FL + 1)
+colors = ["#55A868" if s else "#C44E52" for s in success]
+ax.bar(eps, fl_rand_ret, color=colors)
+ax.set_xlabel("episodio"); ax.set_ylabel("recompensa total (return)")
+ax.set_title(f"FrozenLake-v1 — agente aleatorio (éxito {success.sum()}/{N_EP_FL})")
+ax.set_yticks([0, 1]); ax.set_ylim(0, 1.15)
+fig.tight_layout()
+fig.savefig(FIGS / "frozenlake_random.png", dpi=130)
+plt.show()
+""")
+md("""
+**¿Resuelve el agente aleatorio FrozenLake-v1?** Prácticamente no. La recompensa
+es +1 **solo** si se llega a la meta y 0 en cualquier otro caso (incluido caer en
+un agujero), sin ninguna señal intermedia que guíe. Con `is_slippery=True` el
+movimiento además es estocástico. Llegar a la meta requiere una secuencia
+concreta de ~6 acciones correctas por un camino estrecho rodeado de agujeros; al
+azar eso ocurre solo un pequeño porcentaje de las veces (y por suerte, no por
+estrategia). La mayoría de episodios terminan en un agujero a los pocos pasos.
+Contraste con CartPole: allí *toda* acción da +1 y el agente aleatorio acumula
+algo de recompensa aunque lo haga mal; aquí la recompensa es dispersa
+(*sparse*) y binaria, así que el azar casi no obtiene nada.
+""")
+
+md("### 3.5. Política simple no aprendida para CartPole-v1")
+code("""
+def heuristic_cartpole(obs, env):
+    # obs = [x, x_dot, theta, theta_dot];  empujar hacia donde el poste se está cayendo:
+    # si la velocidad angular del poste es positiva (cae a la derecha) -> empujar a la derecha (1)
+    # si es negativa (cae a la izquierda) -> empujar a la izquierda (0)
+    return 1 if obs[3] > 0 else 0
+
+
+N_EP_CMP = 5  # el enunciado pide la comparación sobre 5 episodios
+env = gym.make("CartPole-v1")
+cp_rand5_steps,  cp_rand5_ret  = run_episodes(env, random_policy,       N_EP_CMP, seed=RNG_SEED)
+cp_heur5_steps,  cp_heur5_ret  = run_episodes(env, heuristic_cartpole,  N_EP_CMP, seed=RNG_SEED)
+env.close()
+
+print(f"{'episodio':>10} | {'aleatorio (return)':>20} | {'heurística (return)':>20}")
+for i in range(N_EP_CMP):
+    print(f"{i+1:>10} | {cp_rand5_ret[i]:>20.1f} | {cp_heur5_ret[i]:>20.1f}")
+print("-" * 56)
+print(f"{'media':>10} | {cp_rand5_ret.mean():>20.1f} | {cp_heur5_ret.mean():>20.1f}")
+""")
+code("""
+fig, ax = plt.subplots(figsize=(7, 3.5))
+x = np.arange(N_EP_CMP); w = 0.38
+ax.bar(x - w/2, cp_rand5_ret, w, label=f"aleatorio (μ={cp_rand5_ret.mean():.0f})", color="#4C72B0")
+ax.bar(x + w/2, cp_heur5_ret, w, label=f"heurística (μ={cp_heur5_ret.mean():.0f})", color="#55A868")
+ax.set_xlabel("episodio"); ax.set_ylabel("recompensa total (return)")
+ax.set_title("CartPole-v1 — aleatorio vs. heurística simple (5 episodios)")
+ax.set_xticks(x); ax.set_xticklabels(range(1, N_EP_CMP + 1)); ax.legend()
+fig.tight_layout()
+fig.savefig(FIGS / "cartpole_random_vs_heuristic.png", dpi=130)
+plt.show()
+""")
+md("""
+La política heurística —una sola regla sobre el signo de la velocidad angular
+del poste, sin aprendizaje— multiplica varias veces la recompensa media del
+agente aleatorio en CartPole-v1. Corrige activamente hacia donde el poste se
+cae, mientras que el agente aleatorio la mitad de las veces empuja en la
+dirección equivocada. Aun así no llega al máximo de 500: la regla ignora la
+posición del carro, que termina saliéndose de los límites, y no anticipa (solo
+reacciona al signo). El análisis completo está en la sección 4 del reporte.
+""")
+
 # ================================================================== build
 nb["cells"] = cells
 nb["metadata"] = {
