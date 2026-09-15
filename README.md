@@ -41,9 +41,9 @@ curl -sL -o labs/lab1-mlp/data/housing.csv \
   Learning Environment y se grabe en video. No se entrena ningún agente: se implementa el
   módulo reutilizable [`ale_utils.py`](projects/space_invaders/ale_utils.py) (`crear_entorno`,
   `agente_aleatorio`, `agente_regla_simple`, `ejecutar_episodio`, `generar_video_agente`) y se
-  comparan un agente aleatorio y una regla fija en `ALE/SpaceInvaders-v5`. Reglas de
-  tecnología del lab: [`CLAUDE.md`](projects/space_invaders/CLAUDE.md). Reporte final:
-  [`reporte.pdf`](projects/space_invaders/reporte.pdf).
+  comparan un agente aleatorio y una regla fija en `ALE/SpaceInvaders-v5`. Videos de los
+  agentes, resultados y reglas de tecnología del lab en
+  [`projects/space_invaders/README.md`](projects/space_invaders/README.md).
 
 ## Proyectos
 
