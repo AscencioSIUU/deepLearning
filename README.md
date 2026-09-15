@@ -36,6 +36,15 @@ curl -sL -o labs/lab1-mlp/data/housing.csv \
   16 iteraciones y experimento de longitud de secuencia. Reporte final:
   [`reporte.pdf`](labs/lab3-rnn-lstm/reporte.pdf).
 
+- [Lab #5 — ALE y Space Invaders](projects/space_invaders/lab5_ale_space_invaders.ipynb):
+  infraestructura para que un agente interactúe con entornos de Atari a través del Arcade
+  Learning Environment y se grabe en video. No se entrena ningún agente: se implementa el
+  módulo reutilizable [`ale_utils.py`](projects/space_invaders/ale_utils.py) (`crear_entorno`,
+  `agente_aleatorio`, `agente_regla_simple`, `ejecutar_episodio`, `generar_video_agente`) y se
+  comparan un agente aleatorio y una regla fija en `ALE/SpaceInvaders-v5`. Reglas de
+  tecnología del lab: [`CLAUDE.md`](projects/space_invaders/CLAUDE.md). Reporte final:
+  [`reporte.pdf`](projects/space_invaders/reporte.pdf).
+
 ## Proyectos
 
 - [Proyecto #1 — Competencia de Modelación](projects/proy-1-competencia/): MLP en
