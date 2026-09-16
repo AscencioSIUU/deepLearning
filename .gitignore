@@ -11,6 +11,9 @@ labs/lab2-CNN/data/*
 # lab3 venv
 .venv/
 
+# Instrucciones locales para Claude Code: no se versionan
+CLAUDE.md
+
 # projects/space_invaders
 projects/space_invaders/**/__pycache__/
 # Enunciados y reporte del lab 5: no se versionan

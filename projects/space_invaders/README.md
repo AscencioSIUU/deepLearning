@@ -105,7 +105,7 @@ completa: [`lab5/lab5_ale_space_invaders.ipynb`](lab5/lab5_ale_space_invaders.ip
 ```
 projects/space_invaders/
 ├── README.md                # este archivo
-├── CLAUDE.md                # reglas de método del proyecto
+├── CLAUDE.md                # reglas de método (local, no versionado)
 ├── requirements.txt
 ├── docs/
 │   ├── plan-entrenamiento.md    # el ladder de iteraciones y las decisiones
