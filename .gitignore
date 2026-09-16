@@ -11,10 +11,14 @@ labs/lab2-CNN/data/*
 # lab3 venv
 .venv/
 
-# lab5 / projects/space_invaders: solo codigo, notebook y entregables binarios.
-# El reporte (.md fuente, .pdf, .docx), su plantilla/estilo y el enunciado no se versionan.
-projects/space_invaders/*.md
-!projects/space_invaders/README.md
-projects/space_invaders/*.pdf
-projects/space_invaders/*.docx
-projects/space_invaders/*.css
+# projects/space_invaders
+projects/space_invaders/**/__pycache__/
+# Enunciados y reporte del lab 5: no se versionan
+projects/space_invaders/docs/*.pdf
+projects/space_invaders/lab5/reporte.pdf
+# De runs/ se versionan results.csv, config.json y los videos. Los pesos (26 MB cada uno)
+# no: el modelo final se anade a mano con  git add -f  cuando se elija.
+projects/space_invaders/agent/runs/**/tb/
+projects/space_invaders/agent/runs/**/checkpoints/
+projects/space_invaders/agent/runs/**/model.zip
+projects/space_invaders/agent/runs/**/replay_buffer*

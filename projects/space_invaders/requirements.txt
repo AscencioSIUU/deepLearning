@@ -1,8 +1,13 @@
+# Entorno
 gymnasium==1.3.0
 ale-py>=0.12
 moviepy
+
+# Agente (Proyecto 2)
+torch
+stable-baselines3[extra]>=2.9
+sb3-contrib>=2.9
+
+# Analisis
 numpy
 matplotlib
-nbformat
-nbconvert
-ipykernel

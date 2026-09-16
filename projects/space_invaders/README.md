@@ -1,135 +1,102 @@
-# Laboratorio #5 — Agentes en el Arcade Learning Environment: Space Invaders
-
-**CC3092 Deep Learning y Sistemas Inteligentes**
+# Space Invaders — CC3092 Deep Learning y Sistemas Inteligentes
 
 Repositorio: <https://github.com/AscencioSIUU/deepLearning/tree/main/projects/space_invaders>
 
-En este laboratorio **no se entrena ningún agente**. El objetivo es dejar funcionando la
-infraestructura que permite que un agente (aleatorio o de regla simple) interactúe con un
-entorno de Atari a través de ALE, y que esa interacción se **grabe en video**. Ese mismo
-código es la base para entrenar agentes en proyectos futuros.
+Esta carpeta tiene **dos trabajos** sobre el mismo juego:
+
+| | Qué es | Dónde | Estado |
+|---|---|---|---|
+| **Lab #5** | Infraestructura para que un agente interactúe con ALE y se grabe en video. No entrena nada. | `lab5/` | entregado, congelado |
+| **Proyecto 2** | Entrenar un agente de Reinforcement Learning que juegue bien. | `agent/` | en curso |
 
 ---
 
-## Videos generados
+## Proyecto 2 — el agente
 
-### Agente aleatorio — `ALE/SpaceInvaders-v5`
+El agente aprende **solo**, jugando: no hay dataset etiquetado ni demostraciones humanas.
+Recibe como recompensa el incremento de score que ALE lee de la memoria de la consola, y
+ajusta su política para maximizarlo.
 
-Entregable principal: un episodio completo de `agente_aleatorio` (semilla 0).
-**298 pasos sobrevividos, recompensa total 35.0.**
+### Cómo correrlo
 
-![Agente aleatorio en Space Invaders](figs/spaceinvaders_random.gif)
+```sh
+pip install -r requirements.txt
 
-> Video en calidad original: [`videos/spaceinvaders_random-episode-0.mp4`](videos/spaceinvaders_random-episode-0.mp4)
-
-### Agente de regla simple — `ALE/SpaceInvaders-v5`
-
-Un episodio completo de `agente_regla_simple` (semilla 0), la política fija que barre de
-lado a lado disparando. **405 pasos sobrevividos, recompensa total 130.0.**
-
-![Agente de regla simple en Space Invaders](figs/spaceinvaders_regla.gif)
-
-> Video en calidad original: [`videos/spaceinvaders_regla-episode-0.mp4`](videos/spaceinvaders_regla-episode-0.mp4)
-
-Los GIF son previsualizaciones a 15 fps generadas desde los `.mp4`; los archivos `.mp4` de
-`videos/` son los entregables reales, producidos por `gymnasium.wrappers.RecordVideo`.
-
----
-
-## El módulo: `ale_utils.py`
-
-Cinco funciones reutilizables, con las firmas exactas que pide el enunciado. El notebook las
-**importa**; no las redefine. Son genéricas: la misma llamada sirve para
-`ALE/SpaceInvaders-v5` y para `CartPole-v1`.
-
-| Función | Qué hace |
-|---|---|
-| `crear_entorno(nombre_entorno, video_folder=None, episode_trigger=None, name_prefix="rl-video", render_mode="rgb_array", **kwargs)` | Crea el entorno y, si se da `video_folder`, lo envuelve con `RecordVideo`. Los `kwargs` pasan a `gym.make` (`obs_type`, `frameskip`, `full_action_space`, …) |
-| `agente_aleatorio(observation, env)` | Baseline: `env.action_space.sample()`. Ignora la observación |
-| `agente_regla_simple(observation, env)` | Política fija no aprendida: alterna `RIGHTFIRE`/`LEFTFIRE` cada 20 pasos |
-| `ejecutar_episodio(env, funcion_agente, max_steps=10000, seed=None)` | Corre un episodio hasta `terminated`/`truncated` o `max_steps`. Retorna `(pasos, recompensa_total)` |
-| `generar_video_agente(nombre_entorno, funcion_agente, video_folder, name_prefix, n_episodios=1, ...)` | Combina las anteriores, cierra el entorno y retorna `(rutas_mp4, metricas)` |
-
-### Uso
-
-```python
-import ale_utils
-
-# 1. Grabar un episodio de un agente aleatorio en Space Invaders
-rutas, metricas = ale_utils.generar_video_agente(
-    "ALE/SpaceInvaders-v5", ale_utils.agente_aleatorio,
-    video_folder="videos", name_prefix="spaceinvaders_random",
-    n_episodios=1, seed=0)
-print(rutas, metricas)   # (['videos/...mp4'], [(298, 35.0)])
-
-# 2. Las mismas funciones sobre un entorno no-Atari
-env = ale_utils.crear_entorno("CartPole-v1")
-pasos, retorno = ale_utils.ejecutar_episodio(env, ale_utils.agente_aleatorio, seed=0)
-env.close()
-
-# 3. Variantes de observación
-env = ale_utils.crear_entorno("ALE/SpaceInvaders-v5", obs_type="ram")   # Box(0,255,(128,),uint8)
+python -m agent.env --check                        # valida el contrato de los entornos
+python -m agent.train    --config i1_smoke         # entrena una iteración (~4 min)
+python -m agent.evaluate --config i1_smoke --video # 5 episodios greedy + video
 ```
 
-### Cuatro detalles que no son opcionales
+`--config` acepta cualquier nombre de `agent/configs.py`. Cada uno es una iteración del
+plan de entrenamiento.
 
-Cada uno costó una corrida fallida y está documentado en el código:
+### Los cuatro archivos
 
-1. **`gym.register_envs(ale_py)`** al importar el módulo. Desde `ale-py` 0.10, sin esa llamada
-   `gym.make("ALE/SpaceInvaders-v5")` lanza `NameNotFound`.
-2. **`env.close()`** en un `finally`. `RecordVideo` escribe el archivo al cerrar el entorno:
-   sin `close()` el último `.mp4` queda vacío.
-3. **`env.action_space.seed(seed)`**. `env.reset(seed=...)` **no** siembra el RNG del espacio
-   de acciones, así que `agente_aleatorio` daba números distintos en cada corrida.
-4. **Reinicio del estado del agente.** `agente_regla_simple` lleva un contador de pasos; si no
-   se reinicia por episodio, el resultado depende de cuántas veces se llamó antes al agente
-   (el mismo experimento daba 141 o 207 según si se habían grabado videos primero).
-   `ejecutar_episodio` llama a `funcion_agente.reset()` cuando el agente expone ese atributo.
-
----
-
-## Resultados
-
-10 episodios por agente, semillas 0–9, sin grabar video:
-
-| Agente | Retorno medio | Desv. est. | Mín. | Máx. | Pasos medios |
-|---|---|---|---|---|---|
-| aleatorio | 123.5 | 69.5 | 30 | 235 | 461.0 |
-| regla simple | 141.0 | 62.4 | 90 | 240 | 406.7 |
-
-![Retorno por episodio](figs/spaceinvaders_random_vs_regla.png)
-
-La regla simple le gana al azar por ~14%, pero con desviaciones de ese tamaño y sólo 10
-episodios la diferencia **no es concluyente**. Lo que sí es claro es que la regla **sobrevive
-menos** (406.7 contra 461.0 pasos) y aun así puntea más: no juega mejor a la defensiva, sólo
-dispara más por unidad de tiempo. Tres razones acotan la mejora:
-
-1. **Sticky actions.** Con `repeat_action_probability=0.25` una de cada cuatro acciones se
-   ignora y se repite la anterior, así que el barrido "determinista" se degrada solo.
-2. **La regla no mira la pantalla.** No esquiva balas ni apunta a nada, así que toda la
-   ganancia viene de disparar más. Por eso muere antes.
-3. **Disparar siempre no es gratis.** En Space Invaders sólo puede haber un disparo del
-   jugador en pantalla a la vez, así que pulsar `FIRE` en cada paso no sube la cadencia por
-   encima de ese límite.
-
-Eso es justamente lo que motiva el aprendizaje: la política tiene que ser **función de la
-observación**. El agente aleatorio no es relleno: es la línea base contra la que se mide
-cualquier agente entrenado. ~124 puntos es el "cero" de este juego, frente a los ~1 700 que
-reporta el DQN original.
-
----
-
-## Investigación (en el notebook)
-
-| Sección | Contenido |
+| Archivo | Responsabilidad |
 |---|---|
-| 1. ALE | Qué es y qué problema de evaluación resuelve; su relación con el emulador **Stella** y con las ROMs originales; variantes `v0`/`v4`/`NoFrameskip-v4`/`ALE/…-v5`; `frameskip`, `repeat_action_probability` (sticky actions) y `full_action_space`; frame skipping y su efecto en velocidad y aprendizaje; mecánica de Space Invaders y cómo el score se traduce a `reward` (`r_t = score_t − score_{t−1}`, señal dispersa y nunca negativa) |
-| 2. Espacios | `Box(0,255,(210,160,3),uint8)` vs el `Box(4,)` de `CartPole-v1` y las cuatro implicaciones de usar imágenes (CNN, POMDP, memoria, escala); `obs_type="ram"` (`Box(0,255,(128,),uint8)`) y cuándo conviene; las 6 acciones (`NOOP`, `FIRE`, `RIGHT`, `LEFT`, `RIGHTFIRE`, `LEFTFIRE`) y `full_action_space=True` → `Discrete(18)`; `AtariPreprocessing` y `FrameStackObservation` documentados **sin aplicarse** |
-| 3. Módulo | Las cinco funciones, genericidad sobre `CartPole-v1`, generación de los videos y comparación de agentes |
-| 4. Discusión | Qué quedó funcionando, qué falta para entrenar, limitaciones |
+| `agent/env.py` | Construye los entornos. **Única fuente de verdad del preprocesamiento.** |
+| `agent/configs.py` | Una `Config` por iteración. El plan de entrenamiento, en código. |
+| `agent/train.py` | Entrena una iteración. Guarda pesos, checkpoints y logs de tensorboard. |
+| `agent/evaluate.py` | Carga pesos, corre 5 episodios greedy, añade una fila a `runs/results.csv` y graba el video. |
 
-Todas las afirmaciones sobre espacios y parámetros se verifican en vivo contra el entorno con
-celdas de código, no de memoria.
+### Dónde quedan los resultados
+
+```
+agent/runs/
+├── results.csv              # una fila por iteración: media, máximo, desviación
+└── <iteracion>/
+    ├── config.json          # la configuración exacta usada, y los FPS que dio
+    ├── model.zip            # pesos (no versionado: 26 MB)
+    ├── tb/                  # curvas para tensorboard (no versionado)
+    └── videos/              # mp4 de un episodio completo
+```
+
+Ver las curvas: `tensorboard --logdir agent/runs`
+
+### Estado actual
+
+| Iteración | Algoritmo | Steps | Score medio | Score máx |
+|---|---|---|---|---|
+| agente aleatorio (Lab 5) | — | — | 123.5 | 235 |
+| `i1_smoke` | DQN | 100 k | 223.0 | 510 |
+
+El ladder completo de iteraciones, las decisiones tomadas y su evidencia están en
+[`docs/plan-entrenamiento.md`](docs/plan-entrenamiento.md).
+
+### Tres cosas que cuestan tiempo si no se saben
+
+- **El frameskip venía duplicado.** `ALE/SpaceInvaders-v5` trae `frameskip=4` y el
+  `AtariWrapper` de SB3 aplica otro 4: skip efectivo de 16, con el agente actuando 4 veces
+  menos de lo debido. Se corrige con `frameskip=1` en el entorno base. `--check` lo verifica.
+- **`device="auto"` de SB3 no detecta MPS**, sólo CUDA, y cae a CPU. En este M5 Pro eso
+  cuesta 2.4x de velocidad (153 vs 368 FPS). Lo resuelve `resolve_device()`.
+- **Evaluación y entrenamiento difieren a propósito** en dos cosas: al evaluar la recompensa
+  no se recorta y el episodio dura las 3 vidas, porque la métrica es el score real de una
+  partida. Todo lo demás es idéntico.
+
+---
+
+## Lab #5 — la infraestructura (entregado)
+
+Módulo de cinco funciones reutilizables sobre ALE, sin entrenar nada:
+`crear_entorno`, `agente_aleatorio`, `agente_regla_simple`, `ejecutar_episodio` y
+`generar_video_agente`. Verificado con `python lab5/ale_utils.py`.
+
+**Agente aleatorio** — 298 pasos, recompensa 35.0:
+
+![Agente aleatorio](lab5/figs/spaceinvaders_random.gif)
+
+**Agente de regla simple** — 405 pasos, recompensa 130.0:
+
+![Agente de regla simple](lab5/figs/spaceinvaders_regla.gif)
+
+Sobre 10 episodios (semillas 0-9): el aleatorio saca 123.5 de media y la regla simple 141.0.
+La regla gana un 14% pero **sobrevive menos** (406.7 pasos contra 461.0): no juega mejor a la
+defensiva, sólo dispara más por unidad de tiempo. Eso es lo que motiva el Proyecto 2 — una
+política útil tiene que ser función de la observación, y ninguna regla escrita a mano lo es.
+
+Videos en calidad original: [`lab5/videos/`](lab5/videos/). Notebook con la investigación
+completa: [`lab5/lab5_ale_space_invaders.ipynb`](lab5/lab5_ale_space_invaders.ipynb).
 
 ---
 
@@ -137,70 +104,16 @@ celdas de código, no de memoria.
 
 ```
 projects/space_invaders/
-├── ale_utils.py                   # el módulo (5 funciones + self-check)
-├── build_nb.py                    # genera el notebook
-├── lab5_ale_space_invaders.ipynb  # entregable: investigación + demo del módulo
-├── build_report.sh                # reporte.md -> reporte.docx + reporte.pdf
+├── README.md                # este archivo
+├── CLAUDE.md                # reglas de método del proyecto
 ├── requirements.txt
-├── figs/                          # gráfica de comparación y GIFs de los videos
-└── videos/                        # .mp4 entregables (RecordVideo)
+├── docs/
+│   ├── plan-entrenamiento.md    # el ladder de iteraciones y las decisiones
+│   └── *.pdf                    # enunciados (no versionados)
+├── lab5/                    # Lab #5, congelado
+└── agent/                   # Proyecto 2
 ```
 
-> **No versionados** (quedan sólo en disco, por `.gitignore`): `reporte.md`, `reporte.pdf`,
-> `reporte.docx`, `reference.docx`, `report.css`, `CLAUDE.md` y el PDF del enunciado. Para
-> reconstruir el reporte hace falta copiar `report.css` y `reference.docx` desde
-> [`labs/lab4RlGymnasium/`](../../labs/lab4RlGymnasium/).
-
----
-
-## Reproducción
-
-```sh
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-python ale_utils.py                          # self-check con asserts -> "self-check OK"
-python build_nb.py                           # regenera el notebook
-jupyter nbconvert --to notebook --execute --inplace lab5_ale_space_invaders.ipynb
-sh build_report.sh                           # -> reporte.docx + reporte.pdf
-```
-
-El self-check de `ale_utils.py` valida: los espacios del entorno (`(210,160,3)` y
-`Discrete(6)`), que ambos agentes devuelvan acciones válidas, la genericidad sobre
-`CartPole-v1`, el corte por `max_steps`, la independencia del historial de llamadas, y que el
-`.mp4` generado no quede vacío.
-
-Dependencias: `gymnasium==1.3.0`, `ale-py>=0.12`, `moviepy`, `numpy`, `matplotlib`,
-`nbformat`, `nbconvert`, `ipykernel`. Las ROMs de Atari vienen incluidas en `ale-py` ≥0.10;
-no hace falta `AutoROM`. El binario de `ffmpeg` lo aporta `imageio-ffmpeg`.
-
----
-
-## Reglas de tecnología
-
-El objetivo del lab es la infraestructura, no entrenar un agente. De ahí las restricciones:
-
-| | |
-|---|---|
-| **Permitido** | Python 3.10+, `gymnasium` 1.3.0, `ale-py` ≥0.12, `numpy`, `matplotlib`, `moviepy`/`imageio-ffmpeg` sólo como backend de `RecordVideo`, `nbformat`/`nbconvert` para el notebook, stdlib |
-| **Entrenar agentes** | Prohibido: Q-learning, DQN, policy gradient, replay buffer, ε-greedy con decaimiento, redes neuronales, checkpoints. Sólo agente aleatorio y regla fija no aprendida |
-| `torch`, `tensorflow`, `keras`, `jax` | Prohibidos: no hay modelo que entrenar |
-| `stable-baselines3`, `ray[rllib]`, `tianshou`, `cleanrl` | Prohibidos: sustituyen la infraestructura que es el objeto del lab |
-| `gym` legacy (OpenAI Gym) | Prohibido: mezclar APIs rompe el contrato de 5 valores de `step()` |
-| `atari-py`, `AutoROM` | Prohibidos: obsoletos, `ale-py` ≥0.10 ya trae las ROMs |
-| `opencv`, `Pillow` para preprocesar frames a mano | Prohibidos: para eso están los wrappers de Gymnasium |
-| Escribir mp4 a mano (`imageio.mimwrite`, `ffmpeg` por `subprocess`) | Prohibido: el enunciado exige `gymnasium.wrappers.RecordVideo` |
-| Clases, factories o capas de configuración sobre las 5 funciones | Prohibidas: deben quedar como funciones sueltas con las firmas del enunciado |
-| `render_mode="human"` o dependencias de display | Prohibidos: grabar requiere `rgb_array` y el lab debe correr headless |
-
----
-
-## Entregables
-
-| Entregable | Archivo |
-|---|---|
-| Notebook | [`lab5_ale_space_invaders.ipynb`](lab5_ale_space_invaders.ipynb) |
-| Módulo de funciones | [`ale_utils.py`](ale_utils.py) |
-| Video, agente aleatorio | [`videos/spaceinvaders_random-episode-0.mp4`](videos/spaceinvaders_random-episode-0.mp4) |
-| Video, agente de regla simple | [`videos/spaceinvaders_regla-episode-0.mp4`](videos/spaceinvaders_regla-episode-0.mp4) |
-| Reporte PDF (3 páginas) | `reporte.pdf` — generado con `build_report.sh`, no versionado |
+Dependencias: `gymnasium` 1.3.0, `ale-py` 0.12, `torch`, `stable-baselines3[extra]`,
+`sb3-contrib`, `moviepy`. Las ROMs de Atari vienen incluidas en `ale-py`; el binario de
+`ffmpeg` lo aporta `imageio-ffmpeg`. Probado en Python 3.14 sobre Apple Silicon.
