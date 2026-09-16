@@ -42,7 +42,13 @@ BASE_ENV_KWARGS = {"frameskip": 1}
 
 
 def make_train_env(cfg):
-    """Entorno vectorizado para entrenar."""
+    """Entorno vectorizado para entrenar.
+
+    Como leer los logs: SB3 aplica el Monitor ANTES del AtariWrapper, asi que
+    rollout/ep_rew_mean es el score real SIN recortar de una partida completa de 3 vidas
+    -directamente comparable con la metrica de evaluacion-, y rollout/ep_len_mean cuenta
+    pasos previos al frameskip (dividir entre 4 para pasos del agente).
+    """
     venv = make_atari_env(
         cfg.env_id,
         n_envs=cfg.n_envs,

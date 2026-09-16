@@ -39,7 +39,7 @@ que elegir un agente entre dos, este es el criterio a vigilar.
 |---|---|---|---|---|
 | I0 | agente aleatorio del Lab 5 | — | el cero de la escala | hecho: media 123.5, máx 235 |
 | I1 | `i1_smoke`: DQN de SB3, corrida corta | 100 k | ¿el circuito entrena → guarda → carga → evalúa → graba? | hecho: media 223.0, máx 510 |
-| I2 | `i2_dqn_1m`: hiperparámetros de Atari del rl-zoo | 1 M | ¿cuánto vale la receta conocida? | pendiente (~35 min) |
+| I2 | `i2_dqn_1m`: hiperparámetros de Atari del rl-zoo | 1 M | ¿cuánto vale la receta conocida? | hecho: media 539.0, máx 1000 (43.5 min) |
 | I3 | `i3_dqn_5m`: mismos hiperparámetros, 5x pasos | 5 M | ¿dónde está la curva de retorno vs. presupuesto? | pendiente (~3 h) |
 | I4 | `i4_qrdqn_5m`: QRDQN en vez de DQN | 5 M | ¿el algoritmo distribucional sube el score? | pendiente (~3 h) |
 | I5 | `i5_ppo_10m`: PPO con 12 entornos paralelos | 10 M | ¿mejor score por hora de reloj? | pendiente |
@@ -80,6 +80,21 @@ Efecto medido en I1, mismo entrenamiento de 100 k pasos:
 
 Es un bug silencioso: el agente entrena igual, sólo que peor, y no da ningún error.
 `python -m agent.env --check` ahora lo verifica con un assert.
+
+### Cómo leer las curvas de entrenamiento
+
+SB3 aplica el `Monitor` **antes** del `AtariWrapper` (está documentado en `make_vec_env`:
+*"the wrapper specified by this parameter will be applied after the Monitor wrapper"*). Eso
+cambia el significado de dos métricas del log, y es fácil malinterpretarlas:
+
+| Métrica del log | Qué es en realidad |
+|---|---|
+| `rollout/ep_rew_mean` | score real **sin recortar** de una partida completa de 3 vidas |
+| `rollout/ep_len_mean` | pasos **previos** al frameskip; dividir entre 4 para pasos del agente |
+
+Es una buena noticia: `ep_rew_mean` es directamente comparable con el score de evaluación, así
+que se puede seguir el progreso en tensorboard sin parar a evaluar. Al arrancar I2 marcaba
+~165, coherente con el agente aleatorio (123.5 de media en 10 episodios).
 
 ### El buffer de repetición cabe en RAM, pero justo
 

@@ -25,3 +25,4 @@ projects/space_invaders/agent/runs/**/tb/
 projects/space_invaders/agent/runs/**/checkpoints/
 projects/space_invaders/agent/runs/**/model.zip
 projects/space_invaders/agent/runs/**/replay_buffer*
+projects/space_invaders/agent/runs/*.log
