@@ -1,0 +1,16 @@
+{
+  "nombre": "i1_smoke",
+  "cambio": "DQN de SB3 por defecto, corrida corta para validar el pipeline",
+  "algo": "DQN",
+  "total_timesteps": 100000,
+  "n_envs": 1,
+  "seed": 0,
+  "device": "mps",
+  "hp": {
+    "learning_starts": 10000,
+    "buffer_size": 50000,
+    "exploration_fraction": 0.3
+  },
+  "segundos": 213,
+  "fps": 470
+}

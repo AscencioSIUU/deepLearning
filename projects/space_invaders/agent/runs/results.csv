@@ -1,0 +1,2 @@
+fecha,iteracion,algo,timesteps,cambio,score_medio,score_max,score_min,score_std,pasos_medios
+2026-09-15 19:46,i1_smoke,DQN,100000,"DQN de SB3 por defecto, corrida corta para validar el pipeline",223.0,510.0,45.0,198.1,479.0
