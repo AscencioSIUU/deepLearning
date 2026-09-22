@@ -53,7 +53,7 @@ def train(cfg, device=None, resume=False):
     print(f"cambio: {cfg.cambio}\n")
 
     checkpoint = CheckpointCallback(
-        save_freq=max(50_000 // cfg.n_envs, 1),
+        save_freq=max(500_000 // cfg.n_envs, 1),
         save_path=str(run_dir / "checkpoints"),
         name_prefix=cfg.nombre,
     )
@@ -75,7 +75,7 @@ def train(cfg, device=None, resume=False):
         "total_timesteps": cfg.total_timesteps, "n_envs": cfg.n_envs,
         "seed": cfg.seed, "device": str(model.device), "hp": cfg.hp,
         "segundos": round(dur), "fps": round(cfg.total_timesteps / dur),
-    }, indent=2))
+    }, indent=2, default=str))   # cfg.hp puede traer schedules (callables) desde i6
 
     print(f"\n[{cfg.nombre}] listo en {dur/60:.1f} min "
           f"({cfg.total_timesteps/dur:.0f} FPS) -> {run_dir/'model.zip'}")

@@ -1,0 +1,23 @@
+{
+  "nombre": "i4_qrdqn_5m",
+  "cambio": "QRDQN (distribucional) en lugar de DQN, mismo presupuesto que i3",
+  "algo": "QRDQN",
+  "total_timesteps": 5000000,
+  "n_envs": 1,
+  "seed": 0,
+  "device": "mps",
+  "hp": {
+    "learning_rate": 0.0001,
+    "buffer_size": 100000,
+    "learning_starts": 100000,
+    "batch_size": 32,
+    "train_freq": 4,
+    "gradient_steps": 1,
+    "target_update_interval": 1000,
+    "exploration_fraction": 0.1,
+    "exploration_final_eps": 0.01,
+    "optimize_memory_usage": false
+  },
+  "segundos": 40200,
+  "fps": 124
+}

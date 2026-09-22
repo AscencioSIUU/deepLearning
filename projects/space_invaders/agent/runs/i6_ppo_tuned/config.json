@@ -1,0 +1,20 @@
+{
+  "nombre": "i6_ppo_tuned",
+  "cambio": "learning_rate y clip_range con schedule lineal del rl-zoo en lugar de constantes",
+  "algo": "PPO",
+  "total_timesteps": 10000000,
+  "n_envs": 12,
+  "seed": 0,
+  "device": "mps",
+  "hp": {
+    "learning_rate": "<function lineal.<locals>.<lambda> at 0x11a37b7f0>",
+    "n_steps": 128,
+    "batch_size": 256,
+    "n_epochs": 4,
+    "clip_range": "<function lineal.<locals>.<lambda> at 0x11a37bb60>",
+    "vf_coef": 0.5,
+    "ent_coef": 0.01
+  },
+  "segundos": 21176,
+  "fps": 472
+}

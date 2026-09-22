@@ -1,0 +1,20 @@
+{
+  "nombre": "i7_ppo_40m",
+  "cambio": "mismos hiperparametros que i6, 4x mas pasos de entrenamiento",
+  "algo": "PPO",
+  "total_timesteps": 40000000,
+  "n_envs": 12,
+  "seed": 0,
+  "device": "mps",
+  "hp": {
+    "learning_rate": "<function lineal.<locals>.<lambda> at 0x1184d77f0>",
+    "n_steps": 128,
+    "batch_size": 256,
+    "n_epochs": 4,
+    "clip_range": "<function lineal.<locals>.<lambda> at 0x1184d7b60>",
+    "vf_coef": 0.5,
+    "ent_coef": 0.01
+  },
+  "segundos": 39924,
+  "fps": 1002
+}

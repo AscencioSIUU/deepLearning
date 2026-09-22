@@ -1,0 +1,30 @@
+{
+  "nombre": "i9_qrdqn_q50",
+  "cambio": "n_quantiles 200 -> 50 en policy_kwargs, resto igual que i4",
+  "algo": "QRDQN",
+  "total_timesteps": 5000000,
+  "n_envs": 1,
+  "seed": 0,
+  "device": "mps",
+  "hp": {
+    "learning_rate": 0.0001,
+    "buffer_size": 100000,
+    "learning_starts": 100000,
+    "batch_size": 32,
+    "train_freq": 4,
+    "gradient_steps": 1,
+    "target_update_interval": 1000,
+    "exploration_fraction": 0.1,
+    "exploration_final_eps": 0.01,
+    "optimize_memory_usage": false,
+    "policy_kwargs": {
+      "n_quantiles": 50,
+      "optimizer_class": "<class 'torch.optim.adam.Adam'>",
+      "optimizer_kwargs": {
+        "eps": 0.0003125
+      }
+    }
+  },
+  "segundos": 13255,
+  "fps": 377
+}

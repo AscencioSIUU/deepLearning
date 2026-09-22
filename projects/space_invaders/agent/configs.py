@@ -29,7 +29,11 @@ class Config:
     seed: int = 0
     env_id: str = "ALE/SpaceInvaders-v5"
     device: str = "auto"
-    video_length: int = 6000     # pasos maximos grabados (un episodio cabe de sobra)
+    # pasos maximos grabados. No es un objetivo, es una salvaguarda: el episodio real corta
+    # la grabacion por `done` (evaluate.py), no por este numero. 6000 alcanzaba para los
+    # agentes tempranos, pero i12 (80M) tuvo episodios de hasta 27_000 pasos y con 30_000 el
+    # margen ya era estrecho. Se sube bien alto para que ningun episodio futuro se corte.
+    video_length: int = 500_000
     hp: dict = field(default_factory=dict)   # se pasa tal cual al constructor de SB3
 
 
@@ -57,6 +61,17 @@ PPO_ATARI = dict(
     vf_coef=0.5,
     ent_coef=0.01,
 )
+
+
+def lineal(valor_inicial):
+    """Schedule del rl-zoo: decae linealmente hasta 0 al acabar el entrenamiento."""
+    return lambda progreso_restante: progreso_restante * valor_inicial
+
+
+# i5 uso learning_rate y clip_range constantes; el rl-zoo los define como lin_2.5e-4 y
+# lin_0.1 (decaen a 0). Sin el annealing, el update sigue siendo agresivo al final del
+# entrenamiento (clip_fraction 0.263 al 83% de i5).
+PPO_ATARI_TUNED = dict(PPO_ATARI, learning_rate=lineal(2.5e-4), clip_range=lineal(0.1))
 
 
 CONFIGS = {
@@ -104,5 +119,88 @@ CONFIGS = {
         total_timesteps=10_000_000,
         n_envs=12,
         hp=dict(PPO_ATARI),
+    ),
+
+    # I6 - misma familia y presupuesto que i5, aisla el efecto del annealing de lr/clip.
+    "i6_ppo_tuned": Config(
+        nombre="i6_ppo_tuned",
+        cambio="learning_rate y clip_range con schedule lineal del rl-zoo en lugar de constantes",
+        algo="PPO",
+        total_timesteps=10_000_000,
+        n_envs=12,
+        hp=dict(PPO_ATARI_TUNED),
+    ),
+
+    # I7 - PPO afinado, doble presupuesto.
+    "i7_ppo_40m": Config(
+        nombre="i7_ppo_40m",
+        cambio="mismos hiperparametros que i6, 4x mas pasos de entrenamiento",
+        algo="PPO",
+        total_timesteps=40_000_000,
+        n_envs=12,
+        hp=dict(PPO_ATARI_TUNED),
+    ),
+
+    # I8 - DQN al presupuesto para el que el rl-zoo diseño la receta. Aisla si el plateau
+    # de i3 (ep_rew_mean 703-708 desde 4.26M) es real o falta de presupuesto.
+    "i8_dqn_10m": Config(
+        nombre="i8_dqn_10m",
+        cambio="mismos hiperparametros que i3, 2x mas pasos de entrenamiento",
+        algo="DQN",
+        total_timesteps=10_000_000,
+        hp=dict(DQN_ATARI),
+    ),
+
+    # I9 - QRDQN a velocidad viable. i4 (200 cuantiles) tiene el mejor maximo (1775) pero
+    # a 124 FPS; bajar los cuantiles ataca directamente el cuello de la perdida cuantilica.
+    "i9_qrdqn_q50": Config(
+        nombre="i9_qrdqn_q50",
+        cambio="n_quantiles 200 -> 50 en policy_kwargs, resto igual que i4",
+        algo="QRDQN",
+        total_timesteps=5_000_000,
+        hp=dict(DQN_ATARI, policy_kwargs={"n_quantiles": 50}),
+    ),
+
+    # I10 - ataca la causa de la oscilacion vista en los checkpoints de i8 (1023 a 513 en
+    # 500k pasos), no el sintoma. target_update_interval=1000 es mas frecuente que los
+    # 10_000 del Nature DQN; el objetivo se mueve rapido y realimenta la sobreestimacion.
+    "i10_dqn_target10k": Config(
+        nombre="i10_dqn_target10k",
+        cambio="target_update_interval 1000 -> 10000, resto igual que i3",
+        algo="DQN",
+        total_timesteps=5_000_000,
+        hp=dict(DQN_ATARI, target_update_interval=10_000),
+    ),
+
+    # I11 - repite el intento de i8 (2x pasos) pero sobre la base sin oscilacion de i10.
+    # La curva de i10 seguia subiendo al cerrar (893 en 5M, pico 946 en 4.75M).
+    "i11_dqn_target10k_10m": Config(
+        nombre="i11_dqn_target10k_10m",
+        cambio="mismos hiperparametros que i10, 2x mas pasos de entrenamiento",
+        algo="DQN",
+        total_timesteps=10_000_000,
+        hp=dict(DQN_ATARI, target_update_interval=10_000),
+    ),
+
+    # I12 - la curva de i7 seguia subiendo sin plateau al cerrar 40M (pico en el 99% del
+    # entrenamiento). Dobla el presupuesto para ver si el techo real esta mas alla de 40M.
+    "i12_ppo_80m": Config(
+        nombre="i12_ppo_80m",
+        cambio="mismos hiperparametros que i7, 2x mas pasos de entrenamiento",
+        algo="PPO",
+        total_timesteps=80_000_000,
+        n_envs=12,
+        hp=dict(PPO_ATARI_TUNED),
+    ),
+
+    # I13 - la curva de i12 no mostraba plateau al cerrar 80M (pico en el 99%, saltos
+    # grandes entre los 40-80M). Dobla otra vez mientras el patron de i7->i12 siga valiendo.
+    "i13_ppo_160m": Config(
+        nombre="i13_ppo_160m",
+        cambio="mismos hiperparametros que i12, 2x mas pasos de entrenamiento",
+        algo="PPO",
+        total_timesteps=160_000_000,
+        n_envs=12,
+        hp=dict(PPO_ATARI_TUNED),
     ),
 }

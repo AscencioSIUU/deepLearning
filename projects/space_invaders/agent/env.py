@@ -19,8 +19,10 @@ import argparse
 
 import ale_py
 import gymnasium as gym
+from stable_baselines3.common.atari_wrappers import MaxAndSkipEnv
 from stable_baselines3.common.env_util import make_atari_env
 from stable_baselines3.common.vec_env import (
+    VecEnvWrapper,
     VecFrameStack,
     VecTransposeImage,
     VecVideoRecorder,
@@ -39,6 +41,45 @@ N_STACK = 4  # frames apilados: un frame solo no muestra velocidad ni direccion
 # reaccionar. Medido antes de corregirlo: 22 frames de emulador por paso.
 # repeat_action_probability (sticky actions, 0.25) se conserva: es del entorno, no del skip.
 BASE_ENV_KWARGS = {"frameskip": 1}
+
+VIDEO_SCALE = 4   # 160x210 -> 640x840: las balas de 1-2 px pasan a verse de 4-8 px
+VIDEO_FPS = 15    # cada paso grabado son 4 frames de emulador a 60 Hz (frame_skip=4)
+
+
+class _VideoUpscale(VecEnvWrapper):
+    """Agranda el render con vecino mas cercano: los sprites quedan nitidos, no difuminados."""
+
+    def reset(self):
+        return self.venv.reset()
+
+    def step_wait(self):
+        return self.venv.step_wait()
+
+    def render(self, mode=None):
+        frame = self._frame_sin_parpadeo()
+        if frame is None:
+            frame = self.venv.render(mode=mode)
+        if frame is None:
+            return frame
+        return frame.repeat(VIDEO_SCALE, axis=0).repeat(VIDEO_SCALE, axis=1)
+
+    def _frame_sin_parpadeo(self):
+        """El Atari 2600 dibuja balas y algunos enemigos cada 2 frames de emulador (limite
+        de sprites por hardware); con frame_skip=4, render() crudo devuelve solo el ultimo
+        de esos 4 frames y puede caer siempre en el que no las dibuja. MaxAndSkipEnv ya
+        resuelve esto para la observacion del agente con un max-pool de los ultimos 2
+        frames RGB (ver _obs_buffer); aqui se reutiliza el mismo buffer para el video."""
+        e = self.venv
+        while hasattr(e, "venv"):
+            e = e.venv
+        if not hasattr(e, "envs"):
+            return None
+        env = e.envs[0]
+        while env is not None and not isinstance(env, MaxAndSkipEnv):
+            env = getattr(env, "env", None)
+        if env is None or not env._obs_buffer.any():   # aun no hay 2 frames (recien reset)
+            return None
+        return env._obs_buffer.max(axis=0)
 
 
 def make_train_env(cfg):
@@ -88,12 +129,16 @@ def make_eval_env(cfg, seed=0, video_folder=None, name_prefix="agente"):
     venv = VecFrameStack(venv, n_stack=N_STACK)
     if video_folder is not None:
         venv = VecVideoRecorder(
-            venv,
+            _VideoUpscale(venv),
             video_folder=str(video_folder),
             record_video_trigger=lambda step: step == 0,
             video_length=cfg.video_length,
             name_prefix=name_prefix,
         )
+        # ponytail: SB3 no expone los fps del recorder y los lee del DummyVecEnv
+        # saltandose los wrappers (vec_video_recorder.py:47-62), asi que hay que
+        # pisarlos ya construido el recorder.
+        venv.frames_per_sec = VIDEO_FPS
     return VecTransposeImage(venv)
 
 
@@ -148,6 +193,11 @@ def _check():
         ev = make_eval_env(cfg, video_folder=tmp, name_prefix="check")
         ev.reset()                       # render() exige reset() antes
         frame = ev.render(mode="rgb_array")
+        e = ev
+        while not isinstance(e, VecVideoRecorder):
+            e = e.venv
+        assert e.frames_per_sec == VIDEO_FPS, e.frames_per_sec
+        print(f"video: fps del recorder = {e.frames_per_sec}  OK")
         for _ in range(60):
             ev.step([ev.action_space.sample()])
         ev.close()
@@ -155,8 +205,9 @@ def _check():
         assert videos and videos[0].stat().st_size > 0, "no se escribio el mp4"
         print(f"video: {videos[0].name} escrito, {videos[0].stat().st_size} bytes  OK")
         if frame is not None:
-            assert frame.shape == (210, 160, 3), frame.shape
-            print(f"render: {frame.shape} RGB original  OK")
+            esperado = (210 * VIDEO_SCALE, 160 * VIDEO_SCALE, 3)
+            assert frame.shape == esperado, frame.shape
+            print(f"render: {frame.shape} escalado {VIDEO_SCALE}x  OK")
 
     print("\nenv.py: todas las comprobaciones pasaron")
 

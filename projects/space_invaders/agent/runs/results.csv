@@ -1,3 +1,14 @@
-fecha,iteracion,algo,timesteps,cambio,score_medio,score_max,score_min,score_std,pasos_medios
-2026-09-15 19:46,i1_smoke,DQN,100000,"DQN de SB3 por defecto, corrida corta para validar el pipeline",223.0,510.0,45.0,198.1,479.0
-2026-09-15 21:02,i2_dqn_1m,DQN,1000000,hiperparametros de Atari del rl-zoo en lugar de los de SB3 por defecto,539.0,1000.0,250.0,250.3,943.4
+fecha,iteracion,algo,timesteps,cambio,score_medio,score_max,score_min,score_std,max_esperado,pasos_medios
+2026-09-15 19:46,i1_smoke,DQN,100000,"DQN de SB3 por defecto, corrida corta para validar el pipeline",223.0,510.0,45.0,198.1,452.8,479.0
+2026-09-15 21:02,i2_dqn_1m,DQN,1000000,hiperparametros de Atari del rl-zoo en lugar de los de SB3 por defecto,539.0,1000.0,250.0,250.3,829.3,943.4
+2026-09-16 01:08,i3_dqn_5m,DQN,5000000,"mismos hiperparametros que i2, 5x mas pasos de entrenamiento",1132.0,1325.0,745.0,201.2,1365.4,1567.0
+2026-09-16 12:26,i4_qrdqn_5m,QRDQN,5000000,"QRDQN (distribucional) en lugar de DQN, mismo presupuesto que i3",972.0,1775.0,510.0,472.2,1519.8,1459.0
+2026-09-16 15:17,i5_ppo_10m,PPO,10000000,"PPO con 12 entornos paralelos, aprovecha los 15 nucleos del M5 Pro",873.0,1425.0,575.0,316.5,1240.1,1184.2
+2026-09-16 23:24,i6_ppo_tuned,PPO,10000000,learning_rate y clip_range con schedule lineal del rl-zoo en lugar de constantes,910.0,1630.0,515.0,443.9,1425.0,1043.2
+2026-09-17 12:18,i8_dqn_10m,DQN,10000000,"mismos hiperparametros que i3, 2x mas pasos de entrenamiento",795.0,1080.0,600.0,191.2,1016.8,1111.2
+2026-09-17 17:12,i9_qrdqn_q50,QRDQN,5000000,"n_quantiles 200 -> 50 en policy_kwargs, resto igual que i4",814.0,1175.0,495.0,266.5,1123.2,1204.4
+2026-09-17 21:22,i10_dqn_target10k,DQN,5000000,"target_update_interval 1000 -> 10000, resto igual que i3",1034.0,1180.0,515.0,259.8,1335.4,1449.8
+2026-09-18 05:45,i11_dqn_target10k_10m,DQN,10000000,"mismos hiperparametros que i10, 2x mas pasos de entrenamiento",916.0,1230.0,570.0,238.4,1192.6,1275.0
+2026-09-19 13:43,i7_ppo_40m,PPO,40000000,"mismos hiperparametros que i6, 4x mas pasos de entrenamiento",5507.0,13125.0,2675.0,3970.3,10112.5,4026.8
+2026-09-20 15:33,i12_ppo_80m,PPO,80000000,"mismos hiperparametros que i7, 2x mas pasos de entrenamiento",36377.0,52575.0,7770.0,16048.9,54993.8,18878.2
+2026-09-21 18:38,i12_ppo_80m,PPO,80000000,"mismos hiperparametros que i7, 2x mas pasos de entrenamiento",36377.0,52575.0,7770.0,16048.9,54993.8,18878.2
