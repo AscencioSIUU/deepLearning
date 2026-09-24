@@ -11,4 +11,3 @@ fecha,iteracion,algo,timesteps,cambio,score_medio,score_max,score_min,score_std,
 2026-09-18 05:45,i11_dqn_target10k_10m,DQN,10000000,"mismos hiperparametros que i10, 2x mas pasos de entrenamiento",916.0,1230.0,570.0,238.4,1192.6,1275.0
 2026-09-19 13:43,i7_ppo_40m,PPO,40000000,"mismos hiperparametros que i6, 4x mas pasos de entrenamiento",5507.0,13125.0,2675.0,3970.3,10112.5,4026.8
 2026-09-20 15:33,i12_ppo_80m,PPO,80000000,"mismos hiperparametros que i7, 2x mas pasos de entrenamiento",36377.0,52575.0,7770.0,16048.9,54993.8,18878.2
-2026-09-21 18:38,i12_ppo_80m,PPO,80000000,"mismos hiperparametros que i7, 2x mas pasos de entrenamiento",36377.0,52575.0,7770.0,16048.9,54993.8,18878.2
