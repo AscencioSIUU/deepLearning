@@ -1,0 +1,4 @@
+Modelo,Configuración,Parámetros Totales,Parámetros Entrenables,MACs / Imagen,FLOPs / Imagen (Fwd),Latencia (ms/img),Tiempo / Epoch (s),Epochs a Mejor Val,Tiempo Total (s),Memoria Pico (MB),FLOPs Estimados Entrenamiento,Test Accuracy,Test Precision,Test Recall,Test F1-Score,Test Acc (10% Datos),Test F1 (10% Datos),Caída Acc (10% vs 100%)
+CNN desde cero,"C1: Baseline (No Aug, Adam 1e-3)","421,866","421,866",38.77 M,0.078 G,1.372,9.04,12/12,108.47,1101.19,125.61 TFLOPs,80.92%,81.03%,80.92%,80.75%,52.97%,52.10%,-27.95%
+VGG-16 Feature Extractor,F2: Compact Head + Data Aug,"15,769,930","1,055,242",3841.10 M,7.682 G,2.774,64.8,8/8,518.44,6222.14,2903.87 TFLOPs,87.29%,87.28%,87.29%,87.24%,83.14%,83.10%,-4.15%
+VGG-16 Fine-Tuning,T2: Unfreeze Blocks 4+5 (BB 1e-5 / Clf 5e-4),"15,769,930","14,034,442",3841.10 M,7.682 G,2.435,169.04,7/8,1352.32,6222.39,6084.30 TFLOPs,92.83%,92.86%,92.83%,92.83%,87.18%,87.14%,-5.65%
