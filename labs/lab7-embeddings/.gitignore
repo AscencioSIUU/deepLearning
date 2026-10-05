@@ -1,0 +1,6 @@
+# corpus/vectores generados y datasets descargados
+data/*
+!data/questions-words.txt
+!data/wordsim353.tsv
+!data/simlex999.txt
+.venv/
