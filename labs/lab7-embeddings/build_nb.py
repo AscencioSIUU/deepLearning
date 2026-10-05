@@ -37,6 +37,8 @@ import json
 import pickle
 import random
 import collections
+import io
+import contextlib
 from pathlib import Path
 
 import numpy as np
@@ -229,6 +231,177 @@ ax.loglog(np.arange(1, 5001), c1[:5000], label="submuestreado")
 ax.set(xlabel="rango", ylabel="frecuencia", title="Efecto del submuestreo (t=1e-4)")
 ax.legend(); plt.tight_layout(); plt.savefig("subsampling.png", dpi=150); plt.show()
 print(f"{len(ids):,} -> {len(sub):,} tokens ({len(sub)/len(ids):.1%}); 'the': {c0[stoi['the']]:,} -> {c1[stoi['the']]:,}")
+""")
+
+# ================================================================== Fase 2
+md("""
+## Fase 2 — Construcción y entrenamiento de embeddings
+
+### 2.0 Evaluación: WordSim-353, SimLex-999 y analogías (3CosAdd)
+
+Todos los modelos se exponen como `gensim.KeyedVectors` (misma interfaz para el SGNS propio, gensim y GloVe).
+
+- **Similitud:** correlación de Spearman entre el coseno del modelo y el puntaje humano (pares con OOV se omiten).
+- **Analogías:** 3CosAdd propio, `argmax_d cos(d, b) − cos(d, a) + cos(d, c)` excluyendo `a, b, c`, sobre las
+  30 000 palabras más frecuentes. Preguntas con alguna palabra fuera de ese vocabulario se omiten (se reporta cobertura).
+  Las 5 primeras categorías de `questions-words.txt` son semánticas y las 9 restantes sintácticas.
+""")
+code("""
+def load_analogies(path="data/questions-words.txt"):
+    sections, cur = {}, None
+    for line in open(path):
+        if line.startswith(":"):
+            cur = line[1:].strip(); sections[cur] = []
+        else:
+            sections[cur].append(tuple(line.lower().split()))
+    return sections
+
+ANALOGIES = load_analogies()
+SEM = list(ANALOGIES)[:5]
+print(len(ANALOGIES), "categorías;", sum(map(len, ANALOGIES.values())), "preguntas")
+
+def analogy_eval(kv, restrict=30_000, sections=ANALOGIES):
+    \"\"\"3CosAdd. Devuelve dict categoría -> (aciertos, evaluadas, total).\"\"\"
+    n = min(restrict, len(kv.index_to_key))
+    E = torch.from_numpy(kv.vectors[:n]).float()
+    E = F.normalize(E, dim=1)
+    out = {}
+    for name, qs in sections.items():
+        idx = [[kv.key_to_index.get(w, n) for w in q] for q in qs]
+        idx = torch.tensor([q for q in idx if max(q) < n])
+        if len(idx) == 0:
+            out[name] = (0, 0, len(qs)); continue
+        a, b, c, d = idx.T
+        scores = (E[b] - E[a] + E[c]) @ E.T
+        scores.scatter_(1, torch.stack([a, b, c], 1), -1e9)  # excluir las palabras de la pregunta
+        out[name] = (int((scores.argmax(1) == d).sum()), len(idx), len(qs))
+    return out
+
+def analogy_acc(res, names=None):
+    names = names or list(res)
+    hit = sum(res[n][0] for n in names); tot = sum(res[n][1] for n in names)
+    return hit / tot if tot else float("nan")
+
+def evaluate(kv):
+    ws = kv.evaluate_word_pairs("data/wordsim353.tsv", dummy4unknown=False)
+    sl = kv.evaluate_word_pairs("data/simlex999.txt", dummy4unknown=False)
+    an = analogy_eval(kv)
+    return {"WS353": ws[1][0], "SimLex": sl[1][0], "ana_total": analogy_acc(an),
+            "ana_sem": analogy_acc(an, SEM), "ana_syn": analogy_acc(an, [s for s in an if s not in SEM])}
+
+def to_kv(E, keys):
+    kv = KeyedVectors(E.shape[1]); kv.add_vectors(keys, E); return kv
+""")
+
+md("""
+### 2.1 Skip-gram con Negative Sampling desde cero (PyTorch)
+
+Dos tablas `nn.Embedding` (entrada `v_c` y salida `u_o`). Para un par (centro `c`, contexto `o`) y `K` negativos
+`n_k ~ P_n(w) ∝ f(w)^0.75`:
+
+`L = −log σ(u_o · v_c) − Σ_k log σ(−u_{n_k} · v_c)`
+
+Decisiones de diseño:
+- **Ventana dinámica:** el radio se sortea uniforme en `[1, W]` para cada centro (pesa más a los contextos cercanos, como word2vec).
+- **Submuestreo** re-muestreado en cada época (sección 1.6).
+- **Tablas `sparse=True` + `SparseAdam`:** en cada paso solo se actualizan las filas usadas (vocab de 77k).
+- **Pares generados vectorizados** con numpy (un desplazamiento `d` por pasada), mezclados y servidos en mini-batches de 8192.
+- Los vectores finales son la tabla de entrada `v` (como en word2vec).
+""")
+code("""
+class SGNS(nn.Module):
+    def __init__(self, V, d):
+        super().__init__()
+        self.inp = nn.Embedding(V, d, sparse=True)
+        self.out = nn.Embedding(V, d, sparse=True)
+        nn.init.uniform_(self.inp.weight, -0.5 / d, 0.5 / d)
+        nn.init.zeros_(self.out.weight)
+
+    def forward(self, c, o, neg):
+        v = self.inp(c)                                         # B,d
+        pos = F.logsigmoid((v * self.out(o)).sum(-1))           # B
+        negs = F.logsigmoid(-torch.bmm(self.out(neg), v.unsqueeze(-1)).squeeze(-1)).sum(-1)  # B,K -> B
+        return -(pos + negs).mean()
+
+
+def make_pairs(ids, keep, window, rng):
+    \"\"\"Una época de pares (centro, contexto): submuestreo + ventana dinámica.\"\"\"
+    s = ids[rng.random(len(ids)) < keep[ids]]
+    b = rng.integers(1, window + 1, len(s))
+    C, O = [], []
+    for d in range(1, window + 1):
+        m = b[:-d] >= d;  C.append(s[:-d][m]); O.append(s[d:][m])      # contexto a la derecha
+        m = b[d:] >= d;   C.append(s[d:][m]);  O.append(s[:-d][m])     # contexto a la izquierda
+    C, O = np.concatenate(C), np.concatenate(O)
+    p = rng.permutation(len(C))
+    return torch.from_numpy(C[p]).long(), torch.from_numpy(O[p]).long()
+
+
+def train_sgns(tag, dim=100, window=5, neg=5, epochs=3, lr=3e-3, batch=8192, ids=ids, verbose=True):
+    path = DATA / "vectors" / f"{tag}.kv"
+    if path.exists():
+        return KeyedVectors.load(str(path))
+    rng = np.random.default_rng(SEED); torch.manual_seed(SEED)
+    model = SGNS(V, dim).to(DEVICE)
+    opt = torch.optim.SparseAdam(model.parameters(), lr=lr)
+    noise = torch.from_numpy(cnt ** 0.75); cdf = (noise / noise.sum()).cumsum(0).float()
+    for ep in range(epochs):
+        C, O = make_pairs(ids, kp, window, rng)
+        n_steps = len(C) // batch; t0 = time.time(); run = 0.0
+        for i in range(n_steps):
+            lr_now = lr * max(0.05, 1 - (ep + i / n_steps) / epochs)  # decaimiento lineal global
+            for g in opt.param_groups: g["lr"] = lr_now
+            sl = slice(i * batch, (i + 1) * batch)
+            negs = torch.searchsorted(cdf, torch.rand(batch, neg)).clamp_(max=V - 1)  # ~ f^0.75
+            loss = model(C[sl].to(DEVICE), O[sl].to(DEVICE), negs.to(DEVICE))
+            opt.zero_grad(); loss.backward(); opt.step()
+            run += loss.item() if i % 50 == 0 else 0
+        kv = to_kv(model.inp.weight.detach().cpu().numpy(), itos)
+        if verbose:
+            print(f"[{tag}] ep {ep+1}/{epochs} | {len(C):,} pares | loss~{run/(n_steps/50):.3f} | "
+                  f"{time.time()-t0:.0f}s | {({k: round(v, 3) for k, v in evaluate(kv).items()})}")
+    kv.save(str(path)); return kv
+
+sgns = train_sgns("sgns_w5")
+""")
+
+md("""
+### 2.2 Word2Vec de gensim (referencia)
+
+Mismo corpus, mismos hiperparámetros (`sg=1`, `dim=100`, `window=5`, `negative=5`, `sample=1e-4`, `min_count=5`,
+3 épocas). Si el SGNS propio está bien implementado, debe quedar cerca de gensim.
+""")
+code("""
+def sentences(toks, size=1000):
+    return [toks[i:i + size] for i in range(0, len(toks), size)]
+
+def train_gensim(tag, toks=None, vector_size=100, window=5, negative=5, alpha=0.025, epochs=3, sg=1, sample=SUBSAMPLE_T, save=False):
+    path = DATA / "vectors" / f"{tag}.kv"
+    if path.exists():
+        return KeyedVectors.load(str(path))
+    with contextlib.redirect_stderr(io.StringIO()):  # gensim imprime 'Exception ignored in our_dot_float' (scipy BLAS), inocuo
+      m = Word2Vec(sentences(tokens if toks is None else toks), vector_size=vector_size, window=window, negative=negative,
+                   alpha=alpha, epochs=epochs, sg=sg, sample=sample, min_count=MIN_COUNT, workers=N_WORKERS, seed=SEED)
+    if save: m.wv.save(str(path))
+    return m.wv
+
+t0 = time.time()
+w2v = train_gensim("gensim_w5", save=True)
+print(f"gensim: {len(w2v):,} palabras en {time.time()-t0:.0f}s")
+""")
+
+md("### 2.3 GloVe preentrenado (`glove-wiki-gigaword-100`, sin entrenamiento adicional)")
+code("""
+glove = api.load("glove-wiki-gigaword-100")
+print(glove.vectors.shape)
+""")
+
+md("### 2.4 Comparación de los tres modelos")
+code("""
+models = {"SGNS propio (PyTorch)": sgns, "Word2Vec gensim": w2v, "GloVe 100d (preentrenado)": glove}
+cmp = pd.DataFrame({k: evaluate(v) for k, v in models.items()}).T
+cmp.insert(0, "vocab", [len(v.index_to_key) for v in models.values()])
+cmp.round(3)
 """)
 
 nb.cells = cells
