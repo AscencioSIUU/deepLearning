@@ -1,0 +1,144 @@
+/* report.css - Reporte en blanco y negro, Arial 11pt, límite de 4 páginas con WeasyPrint */
+@page {
+  size: A4;
+  margin: 1cm 1.1cm 1cm 1.1cm;
+}
+
+html { max-width: none; }
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11pt;
+  line-height: 1.38;
+  color: #000;
+  background: #fff;
+  margin: 0;
+  padding: 0;
+}
+
+h1.title {
+  font-size: 16pt;
+  font-weight: 700;
+  margin: 0 0 2pt 0;
+  color: #000;
+  text-align: center;
+}
+
+p.subtitle {
+  font-size: 12pt;
+  font-weight: 700;
+  margin: 0 0 2pt 0;
+  color: #000;
+  text-align: center;
+}
+
+p.author {
+  font-size: 9pt;
+  color: #000;
+  text-align: center;
+  margin: 0 0 7pt 0;
+}
+
+h1 {
+  font-size: 12.5pt;
+  font-weight: 700;
+  color: #000;
+  margin: 7pt 0 3pt 0;
+  padding-bottom: 1.5pt;
+  border-bottom: 1pt solid #000;
+  page-break-after: avoid;
+}
+
+h2 {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #000;
+  margin: 5pt 0 2pt 0;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 4pt 0 7pt 0;
+  text-align: justify;
+}
+
+ul, ol {
+  margin: 4pt 0 7pt 0;
+  padding-left: 16pt;
+}
+
+li {
+  margin: 2.5pt 0;
+}
+
+strong {
+  color: #000;
+}
+
+code {
+  color: #000;
+  background: #eee;
+}
+
+/* Tablas: centradas, con aire; fuente algo menor que el cuerpo para que quepan de ancho */
+table {
+  width: 95%;
+  margin: 8pt auto 10pt auto;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+  border: 0.8pt solid #000;
+  page-break-inside: avoid;
+}
+
+th, td {
+  border: 0.5pt solid #555;
+  padding: 4pt 6pt;
+  vertical-align: middle;
+  text-align: left;
+  color: #000;
+  line-height: 1.3;
+}
+
+th {
+  background-color: #dcdcdc;
+  color: #000;
+  font-weight: 700;
+  text-align: center;
+}
+
+tbody tr:nth-child(even) td {
+  background-color: #f4f4f4;
+}
+
+/* Figuras e imágenes: forzadas a escala de grises */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 3pt auto;
+}
+
+figcaption, .figure-caption {
+  font-size: 7.5pt;
+  color: #000;
+  text-align: center;
+  font-style: italic;
+  margin-top: 1pt;
+  margin-bottom: 4pt;
+}
+
+.page-break {
+  page-break-before: always;
+}
+
+.img-row {
+  text-align: center;
+  page-break-inside: avoid;
+  margin: 6pt 0;
+}
+
+.img-row img {
+  display: inline-block;
+  vertical-align: top;
+  margin: 3pt 0.1%;
+}
