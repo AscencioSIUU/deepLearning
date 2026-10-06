@@ -305,6 +305,108 @@ par de oraciones es selección (comparaciones múltiples), no evidencia de que e
 muestra de dónde se lee información, no que el modelo use ese resultado (ver discusión sobre interpretabilidad).
 """)
 
+md("""
+## 2.3 GPT-2: atención causal
+
+GPT-2 es un decodificador con máscara causal: el token `i` solo puede atender a `j ≤ i`. Se verifica empíricamente que **toda**
+matriz de atención (12 capas × 12 cabezas) es triangular inferior.
+""")
+code("""
+text_gpt = ("The animal didn't cross the street because it was too tired. After resting for a while, "
+            "it walked slowly toward the river, where the other animals were already drinking water in the evening light.")
+Ag, tg = get_attn(gpt_tok, gpt, text_gpt)
+upper = torch.stack([torch.triu(Ag[l, h], diagonal=1).max() for l in range(12) for h in range(12)])
+print("GPT-2:", tuple(Ag.shape), "| máximo de masa sobre posiciones futuras en las 144 cabezas:", float(upper.max()))
+assert upper.max() < 1e-6 and torch.allclose(Ag.sum(-1), torch.ones(Ag.shape[:3]), atol=1e-4)
+print("OK: todas las matrices son triangulares inferiores y cada fila suma 1")
+plot_heads(Ag[:, :, :24, :24], tg[:24], layers=[0, 5, 11], heads=[0, 3, 6, 9], fname="gpt2_heatmaps.png")
+""")
+
+md("""
+## 2.4 *Attention sinks*
+
+En GPT-2 muchas cabezas dejan una fracción enorme de su atención en el **primer token** aunque no sea semánticamente relevante
+(Xiao et al., 2023). Como el softmax obliga a repartir masa 1, el modelo usa un token siempre visible para todos los queries
+(por la máscara causal, el token 0 es el único que todos ven) como "vertedero" cuando la cabeza no tiene nada que leer.
+Se mide `S[l,h] = media_{t≥1} A[l,h,t,0]`.
+""")
+code("""
+def sink_matrix(A):
+    return A[:, :, 1:, 0].mean(-1)                      # (L, H): atención media al token 0 (consultas t >= 1)
+
+S = sink_matrix(Ag)
+print(f"masa media sobre token 0: {S.mean():.3f} | cabezas con S>0.5: {int((S > 0.5).sum())}/144 | máx {S.max():.3f}")
+print("por capa:", [round(float(x), 2) for x in S.mean(1)])
+# Control: ¿depende del contenido del primer token? Cambiar la palabra inicial y repetir.
+rows = []
+for first in ["The", "Banana", "Quantum", ".", "\\n"]:
+    A_, t_ = get_attn(gpt_tok, gpt, first + text_gpt[3:] if first != "The" else text_gpt)
+    s_ = sink_matrix(A_)
+    rows.append({"primer token": repr(t_[0]), "masa media en token 0": float(s_.mean()), "cabezas S>0.5": int((s_ > 0.5).sum())})
+print(pd.DataFrame(rows).round(3).to_string(index=False))
+# Control 2: la misma palabra "The" pero NO al inicio, ¿recibe esa masa?
+A2, t2 = get_attn(gpt_tok, gpt, "Yesterday " + text_gpt)
+print(f"'The' en posición 1 (no inicial): masa media recibida {float(A2[:, :, 2:, 1].mean()):.3f} vs token 0 ('{t2[0]}'): {float(A2[:, :, 1:, 0].mean()):.3f}")
+fig, ax = plt.subplots(figsize=(5.5, 4.3))
+sns.heatmap(S.numpy(), ax=ax, cmap="magma", vmin=0, vmax=1, xticklabels=range(1, 13), yticklabels=range(1, 13), cbar_kws={"label": "masa en token 0"})
+ax.set(title="GPT-2: attention sink (token 0)", xlabel="cabeza", ylabel="capa"); plt.tight_layout(); plt.savefig("gpt2_sinks.png", dpi=150); plt.show()
+""")
+
+md("""
+## 2.5 Entropía de la atención por capa
+
+`H = −Σ_j p_j log p_j` de cada fila de atención (0 = atención puntual en un token, `log n` = uniforme sobre `n` tokens visibles).
+Para comparar BERT (todas las filas ven `T` tokens) con GPT-2 (la fila `t` ve `t+1`) se normaliza por `log(#tokens visibles)`;
+en GPT-2 se omite la fila 0 (un solo token visible).
+""")
+code("""
+sentences = [
+    "The animal didn't cross the street because it was too tired.",
+    "Scientists discovered a new species of frog in the rainforest last year.",
+    "She opened the old book and began to read the first chapter aloud to her brother.",
+    "The central bank raised interest rates again to fight inflation, surprising many analysts.",
+    "Neural networks learn representations by adjusting millions of parameters with gradient descent.",
+    "After the storm passed, the villagers gathered in the square to repair the broken bridge together.",
+]
+
+def norm_entropy(A, causal):
+    L, H, T, _ = A.shape
+    ent = -(A * torch.log(A.clamp_min(1e-12))).sum(-1)                            # (L, H, T)
+    visible = torch.arange(1, T + 1).float() if causal else torch.full((T,), float(T))
+    ent_n = ent / torch.log(visible)                                               # en [0, 1]
+    return (ent_n[:, :, 1:] if causal else ent_n).mean(-1), (ent[:, :, 1:] if causal else ent).mean(-1)   # (L, H)
+
+res = {}
+for name, tok, model, causal in [("BERT", bert_tok, bert, False), ("GPT-2", gpt_tok, gpt, True)]:
+    per = [norm_entropy(get_attn(tok, model, s)[0], causal) for s in sentences]
+    res[name] = (torch.stack([p[0] for p in per]).mean(0), torch.stack([p[1] for p in per]).mean(0))   # (L, H) promediado sobre oraciones
+
+fig, axs = plt.subplots(1, 2, figsize=(10, 3.6))
+for name, (en, er) in res.items():
+    x = np.arange(1, 13)
+    axs[0].plot(x, en.mean(1), "o-", label=name); axs[0].fill_between(x, en.min(1).values, en.max(1).values, alpha=0.15)
+    axs[1].plot(x, er.mean(1), "o-", label=name)
+axs[0].set(title="entropía normalizada (media, rango de cabezas)", xlabel="capa", ylabel="H / log(n visibles)", ylim=(0, 1)); axs[0].legend()
+axs[1].set(title="entropía en nats (media sobre cabezas)", xlabel="capa", ylabel="H"); axs[1].legend()
+plt.tight_layout(); plt.savefig("entropy.png", dpi=150); plt.show()
+pd.DataFrame({f"{n} (norm.)": [round(float(e.mean(1)[l]), 3) for l in range(12)] for n, (e, _) in res.items()}, index=range(1, 13)).T
+""")
+code("""
+# entropía mínima y máxima por cabeza: ¿hay cabezas muy focalizadas en cada modelo?
+for n, (e, _) in res.items():
+    print(f"{n}: entropía normalizada mínima por cabeza {e.min():.3f} (capa,cabeza)={tuple(int(i)+1 for i in np.unravel_index(int(e.argmin()), e.shape))}, "
+          f"máxima {e.max():.3f}, capa más difusa {int(e.mean(1).argmax())+1}, más focalizada {int(e.mean(1).argmin())+1}")
+""")
+
+md("""
+**Lectura.** (i) Causalidad: masa futura exactamente 0 en las 144 cabezas. (ii) Sinks: 80/144 cabezas dejan >50% de su atención en el
+token 0 (máx. 0.996), con la masa creciendo con la profundidad (0.12 en la capa 1 → ~0.75 en capas 8–11). El efecto es **posicional, no
+semántico**: cambiar la palabra inicial (`The`, `Ban`, `Quant`, `.`, salto de línea) deja la masa en ~0.52–0.53 y las mismas ~80 cabezas, y
+la palabra `The` en la posición 1 recibe solo 0.025. BERT tiene un equivalente en `[CLS]`/`[SEP]` (§2.1). (iii) Entropía: ambas redes empiezan
+con atención difusa en las primeras capas (mezcla local/amplia) y se vuelven más focalizadas hacia capas medias y altas (BERT mínimo en la
+capa 8 con 0.41; GPT-2 mínimo en las capas 10–11 con ~0.29, parte de ello por los sinks). En la última capa la entropía vuelve a subir en ambos.
+""")
+
 nb.cells = cells
 nb.metadata["kernelspec"] = {"display_name": "Python 3", "language": "python", "name": "python3"}
 nbf.write(nb, "notebook.ipynb")
