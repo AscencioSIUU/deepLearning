@@ -4,3 +4,6 @@ data/*
 !data/wordsim353.tsv
 !data/simlex999.txt
 .venv/
+!data/vectors/
+data/vectors/*
+!data/vectors/best_sgns.kv*

@@ -404,6 +404,295 @@ cmp.insert(0, "vocab", [len(v.index_to_key) for v in models.values()])
 cmp.round(3)
 """)
 
+md("""
+### 2.5 Exploración de hiperparámetros
+
+Barrido de un factor a la vez (resto en la configuración base: dim 100, ventana 5, 5 negativos, lr 0.025,
+3 épocas en el modelo principal, `sample=1e-4`). Para que el barrido sea barato se usa gensim sobre un prefijo de 5M tokens con 10 épocas (con 3 el corpus chico queda sub-entrenado
+y las comparaciones se vuelven ruido); el tamaño del corpus se barre aparte (1M / 5M / 20M, 5 épocas cada uno). El efecto de la **ventana** se confirma además con el
+SGNS propio en el corpus completo (2.6).
+""")
+code("""
+SWEEP_TOKENS = tokens[:5_000_000]
+sweeps = {
+    "dim":      [("vector_size", v) for v in (50, 100, 200, 300)],
+    "ventana":  [("window", v) for v in (2, 5, 10)],
+    "negativos": [("negative", v) for v in (2, 5, 15)],
+    "lr (alpha)": [("alpha", v) for v in (0.005, 0.025, 0.05)],
+}
+rows = []
+for factor, opts in sweeps.items():
+    for param, val in opts:
+        kv = train_gensim(f"sweep_{param}_{val}", toks=SWEEP_TOKENS, epochs=10, **{param: val})
+        rows.append({"factor": factor, "valor": val, "corpus": "5M", **evaluate(kv)})
+for n in (1_000_000, 5_000_000, 20_000_000):
+    kv = train_gensim(f"sweep_corpus_{n}", toks=tokens[:n], epochs=5)
+    rows.append({"factor": "tamaño corpus", "valor": f"{n//10**6}M", "corpus": f"{n//10**6}M", **evaluate(kv)})
+sweep = pd.DataFrame(rows)
+sweep.drop(columns="corpus").round(3)
+""")
+code("""
+fig, axs = plt.subplots(1, 5, figsize=(17, 3), sharey=True)
+for ax, (factor, g) in zip(axs, sweep.groupby("factor", sort=False)):
+    x = g["valor"].astype(str)
+    ax.plot(x, g["WS353"], "o-", label="WS353"); ax.plot(x, g["ana_sem"], "s-", label="analog. sem.")
+    ax.plot(x, g["ana_syn"], "^-", label="analog. sint.")
+    ax.set_title(factor)
+axs[0].legend(fontsize=7); plt.tight_layout(); plt.savefig("hyperparams.png", dpi=150); plt.show()
+""")
+
+md("""
+### 2.6 Ventana pequeña vs grande con el SGNS propio (corpus completo)
+
+Ventana chica (2) captura relaciones **sintácticas/funcionales** (vecinos inmediatos intercambiables: mismo POS);
+ventana grande (10) captura relaciones **temáticas/semánticas** (palabras del mismo tema co-ocurren a distancia).
+""")
+code("""
+sgns_w2 = train_sgns("sgns_w2", window=2)
+sgns_w10 = train_sgns("sgns_w10", window=10)
+win = pd.DataFrame({f"SGNS ventana {w}": evaluate(kv) for w, kv in [(2, sgns_w2), (5, sgns), (10, sgns_w10)]}).T
+win.round(3)
+""")
+
+md("""
+## Fase 3 — Aritmética vectorial
+
+### 3.1 Analogías con 3CosAdd
+
+`vec(b) − vec(a) + vec(c) ≈ vec(d)`; ej. `king − man + woman ≈ queen`. La búsqueda excluye `a`, `b`, `c`.
+""")
+code("""
+def analogy(kv, a, b, c, topn=5, restrict=30_000):
+    \"\"\"a es a b como c es a ?  (3CosAdd)\"\"\"
+    E = F.normalize(torch.from_numpy(kv.vectors[:restrict]).float(), dim=1)
+    q = E[kv.key_to_index[b]] - E[kv.key_to_index[a]] + E[kv.key_to_index[c]]
+    s = E @ q
+    for w in (a, b, c): s[kv.key_to_index[w]] = -1e9
+    return [kv.index_to_key[i] for i in s.topk(topn).indices]
+
+tests = [("man", "king", "woman"), ("france", "paris", "italy"), ("walk", "walking", "swim"),
+         ("good", "better", "bad"), ("japan", "tokyo", "germany"), ("dollar", "usa", "yen")]
+rows = []
+for a, b, c in tests:
+    row = {"a : b :: c : ?": f"{a} : {b} :: {c} : ?"}
+    for name, kv in models.items():
+        try: row[name] = ", ".join(analogy(kv, a, b, c, 3))
+        except KeyError: row[name] = "(OOV)"
+    rows.append(row)
+pd.DataFrame(rows).set_index("a : b :: c : ?")
+""")
+
+md("### 3.2 Evaluación sistemática en las 14 categorías de `questions-words.txt`")
+code("""
+all_models = {"SGNS w=5 (propio)": sgns, "SGNS w=2": sgns_w2, "SGNS w=10": sgns_w10,
+              "gensim w2v": w2v, "GloVe-100": glove}
+per_cat = {n: analogy_eval(kv) for n, kv in all_models.items()}
+tab = pd.DataFrame({n: {c: (r[c][0] / r[c][1] if r[c][1] else np.nan) for c in ANALOGIES} for n, r in per_cat.items()})
+tab.loc["— semántico"] = {n: analogy_acc(r, SEM) for n, r in per_cat.items()}
+tab.loc["— sintáctico"] = {n: analogy_acc(r, [c for c in r if c not in SEM]) for n, r in per_cat.items()}
+tab.loc["TOTAL"] = {n: analogy_acc(r) for n, r in per_cat.items()}
+tab.loc["cobertura"] = {n: sum(v[1] for v in r.values()) / sum(v[2] for v in r.values()) for n, r in per_cat.items()}
+tab.round(3)
+""")
+code("""
+# sanity check del 3CosAdd propio contra la implementación de gensim (mismo vocab restringido)
+g_acc, _ = sgns.evaluate_word_analogies("data/questions-words.txt", restrict_vocab=30_000, case_insensitive=True)
+print(f"propio: {analogy_acc(per_cat['SGNS w=5 (propio)']):.4f} | gensim.evaluate_word_analogies: {g_acc:.4f}")
+fig, ax = plt.subplots(figsize=(10, 4))
+tab.iloc[:14].plot.bar(ax=ax, width=0.85); ax.set_ylabel("accuracy 3CosAdd"); ax.legend(fontsize=7)
+plt.tight_layout(); plt.savefig("analogies_by_cat.png", dpi=150); plt.show()
+""")
+
+md("### 3.3 Visualización de clusters semánticos (t-SNE)")
+code("""
+from sklearn.manifold import TSNE
+groups = {
+    "países": "france germany italy spain china japan russia india brazil canada egypt mexico".split(),
+    "capitales": "paris berlin rome madrid beijing tokyo moscow delhi brasilia ottawa cairo".split(),
+    "animales": "dog cat horse lion tiger bird fish wolf bear rabbit".split(),
+    "colores": "red blue green yellow black white orange purple brown pink".split(),
+    "familia": "father mother brother sister son daughter uncle aunt husband wife".split(),
+    "verbos": "run walk eat sleep write read speak think build play".split(),
+}
+def tsne_plot(kv, ax, title):
+    words = [(w, g) for g, ws in groups.items() for w in ws if w in kv.key_to_index]
+    X = np.stack([kv[w] for w, _ in words])
+    Y = TSNE(2, perplexity=12, init="pca", random_state=SEED).fit_transform(X)
+    for g in groups:
+        pts = [(y, w) for y, (w, gg) in zip(Y, words) if gg == g]
+        ax.scatter(*np.array([p for p, _ in pts]).T, s=18, label=g)
+        for p, w in pts: ax.annotate(w, p, fontsize=7)
+    ax.set_title(title); ax.set_xticks([]); ax.set_yticks([])
+fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+tsne_plot(sgns, axs[0], "SGNS propio (w=5)"); tsne_plot(glove, axs[1], "GloVe-100")
+axs[0].legend(fontsize=8); plt.tight_layout(); plt.savefig("tsne.png", dpi=150); plt.show()
+""")
+code("""
+# vectores del mejor modelo propio (.kv y .txt) para el entregable
+best = sgns
+best.save("data/vectors/best_sgns.kv"); best.save_word2vec_format("data/vectors/best_sgns.txt")
+print("guardado: data/vectors/best_sgns.kv / .txt", best.vectors.shape)
+""")
+
+md("""
+## Fase 4 — Pipeline end-to-end: clasificación de AG News
+
+Cuatro familias de modelos sobre las 4 clases (World, Sports, Business, Sci/Tech):
+
+1. **Baseline:** TF-IDF (unigramas + bigramas) + Regresión Logística.
+2. **Embeddings aleatorios:** `nn.EmbeddingBag` (media) + MLP, entrenado desde cero.
+3. **SGNS propio** como inicialización de la tabla: (a) congelada, (b) con fine-tuning.
+4. **GloVe-100** como inicialización: (a) congelada, (b) con fine-tuning.
+
+Todos los modelos neuronales comparten arquitectura (`EmbeddingBag` media → Linear(128) → ReLU → Dropout → Linear(4))
+y vocabulario (palabras con ≥2 apariciones en el train de AG News). Las filas sin vector preentrenado se inicializan
+con ruido pequeño (fine-tuning) o en cero (congelada). Split: 108k train / 12k val (para elegir época) / 7.6k test oficial.
+Se reportan media ± desviación sobre 3 semillas.
+""")
+code("""
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+
+ag = load_dataset("fancyzhx/ag_news")
+LABELS = ["World", "Sports", "Business", "Sci/Tech"]
+perm = np.random.default_rng(SEED).permutation(len(ag["train"]))
+val_idx, tr_idx = perm[:12_000], perm[12_000:]
+tok_tr = [tokenize(t) for t in ag["train"]["text"]]
+tok_te = [tokenize(t) for t in ag["test"]["text"]]
+y_all = np.array(ag["train"]["label"]); y_te = np.array(ag["test"]["label"])
+print(len(tr_idx), len(val_idx), len(tok_te), "| ejemplo:", " ".join(tok_tr[0][:15]), "->", LABELS[y_all[0]])
+
+def metrics(y, p):
+    pr, rc, f1, _ = precision_recall_fscore_support(y, p, average="macro", zero_division=0)
+    return {"acc": accuracy_score(y, p), "prec": pr, "rec": rc, "f1": f1}
+""")
+
+md("### 4.1 Baseline: TF-IDF + Regresión Logística")
+code("""
+def tfidf_lr(n_train=None):
+    idx = tr_idx if n_train is None else tr_idx[:n_train]
+    vec = TfidfVectorizer(ngram_range=(1, 2), min_df=2, sublinear_tf=True)
+    X = vec.fit_transform([" ".join(tok_tr[i]) for i in idx])
+    clf = LogisticRegression(C=10, max_iter=1000).fit(X, y_all[idx])
+    return metrics(y_te, clf.predict(vec.transform([" ".join(t) for t in tok_te])))
+
+t0 = time.time(); res_tfidf = tfidf_lr(); res_tfidf_small = tfidf_lr(1000)
+print(f"TF-IDF+LR ({time.time()-t0:.0f}s):", {k: round(v, 4) for k, v in res_tfidf.items()})
+print("TF-IDF+LR con 1000 ejemplos:", {k: round(v, 4) for k, v in res_tfidf_small.items()})
+""")
+
+md("""
+### 4.2 Clasificadores con `EmbeddingBag`
+
+Vocabulario de AG News y matrices de inicialización a partir de cada modelo de embeddings.
+""")
+code("""
+cnt_ag = collections.Counter(w for i in tr_idx for w in tok_tr[i])
+ag_itos = [w for w, c in cnt_ag.most_common() if c >= 2]
+ag_stoi = {w: i for i, w in enumerate(ag_itos)}
+to_ids = lambda toks: np.array([ag_stoi[w] for w in toks if w in ag_stoi], dtype=np.int64)
+ids_tr = [to_ids(t) for t in tok_tr]; ids_te = [to_ids(t) for t in tok_te]
+print(f"vocab AG News: {len(ag_itos):,} | tokens/doc: {np.mean([len(x) for x in ids_tr]):.1f}")
+
+def init_table(kv, dim=100, seed=SEED, noise=0.1):
+    \"\"\"Matriz (V_ag, dim). kv=None -> aleatoria. Palabras sin vector -> ruido (noise>0) o ceros.\"\"\"
+    rng = np.random.default_rng(seed)
+    W = rng.normal(0, noise, (len(ag_itos), dim)).astype(np.float32) if noise else np.zeros((len(ag_itos), dim), np.float32)
+    if kv is None:
+        return W, 0.0
+    hit = [(i, kv.key_to_index[w]) for i, w in enumerate(ag_itos) if w in kv.key_to_index]
+    W[[i for i, _ in hit]] = kv.vectors[[j for _, j in hit]]
+    return W, len(hit) / len(ag_itos)
+
+for name, kv in [("SGNS", sgns), ("GloVe", glove)]:
+    print(f"{name}: cobertura del vocab AG News = {init_table(kv)[1]:.1%}")
+""")
+code("""
+class BagClf(nn.Module):
+    def __init__(self, W0, freeze, hid=128):
+        super().__init__()
+        self.emb = nn.EmbeddingBag.from_pretrained(torch.from_numpy(W0), freeze=freeze, mode="mean")
+        self.mlp = nn.Sequential(nn.Linear(W0.shape[1], hid), nn.ReLU(), nn.Dropout(0.3), nn.Linear(hid, 4))
+
+    def forward(self, flat, offs):
+        return self.mlp(self.emb(flat, offs))
+
+def batch(docs, idx):
+    seqs = [docs[i] for i in idx]
+    lens = torch.tensor([len(s) for s in seqs])
+    offs = torch.cat([torch.zeros(1, dtype=torch.long), lens.cumsum(0)[:-1]])
+    return torch.from_numpy(np.concatenate(seqs)), offs
+
+@torch.no_grad()
+def predict(model, docs, bs=2048):
+    model.eval()
+    return np.concatenate([model(*batch(docs, range(i, min(i + bs, len(docs))))).argmax(1).numpy()
+                           for i in range(0, len(docs), bs)])
+
+def run_clf(W0, freeze, seed, n_train=None, epochs=10, lr=2e-3, bs=256):
+    torch.manual_seed(seed); rng = np.random.default_rng(seed)
+    idx = tr_idx if n_train is None else tr_idx[:n_train]
+    model = BagClf(W0.copy(), freeze)
+    opt = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=lr)
+    y_tr_t = torch.from_numpy(y_all)
+    ids_val = [ids_tr[i] for i in val_idx]; y_val = y_all[val_idx]
+    best = (-1, None)
+    for ep in range(epochs):
+        model.train()
+        for b in np.array_split(rng.permutation(idx), max(1, len(idx) // bs)):
+            loss = F.cross_entropy(model(*batch(ids_tr, b)), y_tr_t[b])
+            opt.zero_grad(); loss.backward(); opt.step()
+        va = accuracy_score(y_val, predict(model, ids_val))
+        if va > best[0]:
+            best = (va, metrics(y_te, predict(model, ids_te)))  # test en la mejor época de validación
+    return best[1]
+
+VARIANTS = {"Embeddings aleatorios": (None, False), "SGNS frozen": (sgns, True), "SGNS fine-tune": (sgns, False),
+            "GloVe frozen": (glove, True), "GloVe fine-tune": (glove, False)}
+
+def run_all(n_train=None, epochs=10, seeds=(0, 1, 2)):
+    out = {}
+    for name, (kv, freeze) in VARIANTS.items():
+        # frozen: filas sin vector en cero; fine-tune/aleatorio: ruido pequeño
+        W0, _ = init_table(kv, noise=0.0 if (freeze and kv is not None) else 0.1)
+        runs = [run_clf(W0, freeze, s, n_train, epochs) for s in seeds]
+        out[name] = {k: (np.mean([r[k] for r in runs]), np.std([r[k] for r in runs])) for k in runs[0]}
+        print(f"{name:22s} acc={out[name]['acc'][0]:.4f}±{out[name]['acc'][1]:.4f}")
+    return out
+
+def to_table(res, base):
+    rows = {"TF-IDF + LogReg": {k: f"{v:.4f}" for k, v in base.items()}}
+    rows.update({n: {k: f"{m:.4f} ± {s:.4f}" for k, (m, s) in r.items()} for n, r in res.items()})
+    return pd.DataFrame(rows).T.rename(columns={"acc": "Accuracy", "prec": "Precision", "rec": "Recall", "f1": "F1"})
+""")
+code("""
+t0 = time.time()
+res_full = run_all()
+print(f"{time.time()-t0:.0f}s")
+tab_full = to_table(res_full, res_tfidf); tab_full
+""")
+
+md("""
+### 4.3 Régimen de pocos datos (1 000 ejemplos etiquetados)
+
+Es donde el conocimiento preentrenado debería aportar más: con pocos ejemplos, una tabla aleatoria no
+puede aprender representaciones útiles de las palabras.
+""")
+code("""
+res_small = run_all(n_train=1000, epochs=30)
+tab_small = to_table(res_small, res_tfidf_small); tab_small
+""")
+code("""
+fig, ax = plt.subplots(figsize=(8, 3.5))
+names = list(res_full); x = np.arange(len(names) + 1)
+ax.bar(x - 0.2, [res_tfidf["acc"]] + [res_full[n]["acc"][0] for n in names], 0.4, label="108k ejemplos")
+ax.bar(x + 0.2, [res_tfidf_small["acc"]] + [res_small[n]["acc"][0] for n in names], 0.4, label="1k ejemplos")
+ax.set_xticks(x); ax.set_xticklabels(["TF-IDF+LR"] + names, rotation=20, ha="right", fontsize=8)
+ax.set_ylim(0.6, 1); ax.set_ylabel("accuracy (test)"); ax.legend(); plt.tight_layout()
+plt.savefig("classification.png", dpi=150); plt.show()
+""")
+
 nb.cells = cells
 nb.metadata["kernelspec"] = {"display_name": "Python 3", "language": "python", "name": "python3"}
 nbf.write(nb, "notebook.ipynb")
