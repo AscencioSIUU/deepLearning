@@ -1,6 +1,6 @@
 <h1 class="title">CC3092 — Deep Learning y Sistemas Inteligentes</h1>
 <p class="subtitle">Laboratorio #7: NLP end-to-end y Embeddings</p>
-<p class="author">Nesstor · github.com/nesstor/deepLearning/tree/main/labs/lab7-embeddings</p>
+<p class="author">Ernesto Ascencio · Carné 23009<br>git clone https://github.com/AscencioSIUU/deepLearning.git · carpeta <code>labs/lab7-embeddings</code></p>
 
 # 1. Preprocesamiento y análisis del corpus
 
