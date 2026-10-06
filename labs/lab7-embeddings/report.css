@@ -142,3 +142,16 @@ figcaption, .figure-caption {
   vertical-align: top;
   margin: 3pt 0.1%;
 }
+
+/* Sangría: el cuerpo queda desplazado respecto al título/subtítulo */
+body > p, body > .lista, body > ul, body > ol { margin-left: 14pt; }
+p.subtitle, p.author { margin-left: 0; }
+
+/* Ítems con letra: A) B) C)... con sangría francesa */
+.lista p {
+  text-align: justify;
+  padding-left: 1.6em;
+  text-indent: -1.6em;
+  margin: 3pt 0 5pt 0;
+}
+.refs { margin-left: 14pt; }

@@ -4,11 +4,23 @@
 
 # 1. Preprocesamiento y análisis del corpus
 
-**Corpus**: primeros 20M tokens de WikiText-103 (raw, ≈20% del total) por costo de cómputo en CPU. Pipeline: texto crudo → minúsculas → resolución de marcas `@-@ @,@ @.@` → regex de palabras/números/puntuación → descarte de puntuación, números a `<num>` → IDs. Se compararon tres tokenizadores sobre 3,000 párrafos: el regex propio (0.04 s) es ~8× más rápido que NLTK-Treebank (0.31 s) y ~25× que spaCy (1.06 s), con vocabularios de 23k (propio), 25k (spaCy) y 27k (NLTK) tipos. Difieren en casos límite (`U.S.`, `well-known`, `isn't`), pero como WikiText ya viene pre-tokenizado la diferencia es irrelevante para embeddings.
+::: lista
 
-**Zipf**: el ajuste log–log en rangos 10–10⁴ da α = 1.07 (frecuencia ∝ 1/rangoᵅ), cercano al ideal α≈1. **Vocabulario vs `min_count`**: 221k tipos con `min_count=1`; 77k con 5 (35% de los tipos, 98.8% de los tokens); 13k con 100 (92% de los tokens). La cola larga ocupa la mayor parte de la tabla pero aporta casi nada de texto, y esas palabras no tienen contextos suficientes para aprender un buen vector; se fijó `min_count=5`.
+A\) **Corpus**: primeros 20M tokens de WikiText-103 (raw, ≈20% del total) por costo de cómputo en CPU. Pipeline: texto crudo → minúsculas → resolución de marcas `@-@ @,@ @.@` → regex de palabras/números/puntuación → descarte de puntuación, números a `<num>` → IDs. Se compararon tres tokenizadores sobre 3,000 párrafos: el regex propio (0.04 s) es ~8× más rápido que NLTK-Treebank (0.31 s) y ~25× que spaCy (1.06 s), con vocabularios de 23k (propio), 25k (spaCy) y 27k (NLTK) tipos. Difieren en casos límite (`U.S.`, `well-known`, `isn't`), pero como WikiText ya viene pre-tokenizado la diferencia es irrelevante para embeddings.
 
-**Submuestreo** (Mikolov): `P(conservar)=min(1, √(t/f)+t/f)`, `t=10⁻⁴` (el valor típico 10⁻⁵ es para corpus de miles de millones). Conserva el 57% de los tokens por época (`the`: 1.49M → 56k) y aplana la cabeza de la distribución: se re-muestrea en cada época y recorta ~43% del cómputo sin perder palabras raras.
+:::
+
+::: lista
+
+B\) **Zipf**: el ajuste log–log en rangos 10–10⁴ da α = 1.07 (frecuencia ∝ 1/rangoᵅ), cercano al ideal α≈1. **Vocabulario vs `min_count`**: 221k tipos con `min_count=1`; 77k con 5 (35% de los tipos, 98.8% de los tokens); 13k con 100 (92% de los tokens). La cola larga ocupa la mayor parte de la tabla pero aporta casi nada de texto, y esas palabras no tienen contextos suficientes para aprender un buen vector; se fijó `min_count=5`.
+
+:::
+
+::: lista
+
+C\) **Submuestreo** (Mikolov): `P(conservar)=min(1, √(t/f)+t/f)`, `t=10⁻⁴` (el valor típico 10⁻⁵ es para corpus de miles de millones). Conserva el 57% de los tokens por época (`the`: 1.49M → 56k) y aplana la cabeza de la distribución: se re-muestrea en cada época y recorta ~43% del cómputo sin perder palabras raras.
+
+:::
 
 # 2. Embeddings: modelos e hiperparámetros
 
@@ -26,7 +38,37 @@ El SGNS propio iguala o supera a gensim (0.632 vs 0.615 en WS353; 0.330 vs 0.301
 
 ![Barrido de hiperparámetros (gensim, 5M tokens, 10 épocas; tamaño de corpus con 5 épocas).](hyperparams.png){width=100%}
 
-**Hiperparámetros** (barrido de un factor a la vez, ver figura y notebook §2.5): (i) **dimensión**: 50→100 mejora (WS353 .560→.574, analogías .160→.194) y más allá se estanca o empeora con este corpus chico (300d: .154); (ii) **ventana**: 2→10 sube WS353 de .539 a .630 y analogías semánticas de .101 a .158; (iii) **negativos**: K=2→15 mejora analogías (.160→.205) con costo lineal por paso; (iv) **lr**: 0.005 casi no entrena (WS353 .404) y 0.025–0.05 funcionan; (v) **tamaño del corpus** es el factor dominante: 1M→5M→20M da WS353 .19→.52→.65 y analogías .03→.14→.37 (con épocas fijas, un corpus pequeño además recibe menos actualizaciones).
+**Hiperparámetros** (barrido de un factor a la vez, ver figura y notebook §2.5):
+
+::: lista
+
+A\) **dimensión**: 50→100 mejora (WS353 .560→.574, analogías .160→.194) y más allá se estanca o empeora con este corpus chico (300d: .154).
+
+:::
+
+::: lista
+
+B\) **ventana**: 2→10 sube WS353 de .539 a .630 y analogías semánticas de .101 a .158.
+
+:::
+
+::: lista
+
+C\) **negativos**: K=2→15 mejora analogías (.160→.205) con costo lineal por paso.
+
+:::
+
+::: lista
+
+D\) **lr**: 0.005 casi no entrena (WS353 .404) y 0.025–0.05 funcionan.
+
+:::
+
+::: lista
+
+E\) **tamaño del corpus** es el factor dominante: 1M→5M→20M da WS353 .19→.52→.65 y analogías .03→.14→.37 (con épocas fijas, un corpus pequeño además recibe menos actualizaciones).
+
+:::
 
 **Ventana pequeña vs grande** (SGNS propio, corpus completo): w=2 gana en categorías sintácticas/funcionales (comparativo .480 vs .335, superlativo .316 vs .207, familia .494 vs .377): los vecinos inmediatos son intercambiables por categoría gramatical. w=10 gana en semánticas/temáticas (capitales .526 vs .257, nacionalidades .771 vs .468): captura el tema de la oración. Con w=10 el costo de entrenamiento se multiplica ×3.7 (124M pares/época).
 
@@ -53,10 +95,46 @@ Split 108k train / 12k val / 7.6k test. Modelos neuronales: `EmbeddingBag` (medi
 | GloVe frozen | 0.8954 ± .001 | 0.8957 | 0.8954 | 0.8952 | 0.8656 ± .000 |
 | GloVe fine-tune | 0.9186 ± .001 | 0.9191 | 0.9186 | 0.9185 | **0.8690 ± .002** |
 
-**Con datos suficientes**, el baseline TF-IDF es el mejor (92.2%) y los neuronales con fine-tune quedan en ~91.8%; los embeddings aleatorios (91.75%) casi igualan a los preentrenados con fine-tune: con 108k ejemplos la tabla aprende lo que necesita de la tarea. **Frozen** pierde 2.3–4.3 pts: un espacio entrenado para predecir contextos en Wikipedia no separa por tópico de noticias tan bien como uno ajustado, y las palabras sin vector (28% del vocabulario con el SGNS propio) quedan en cero. GloVe congelado supera al SGNS congelado (+2 pts) por mayor cobertura y calidad (≈300× más datos).
+::: lista
 
-**Con 1,000 ejemplos**, el orden se invierte: GloVe fine-tune llega a 86.9% (+4.4 pts sobre aleatorio y +4.5 sobre TF-IDF), SGNS fine-tune a 86.1% y hasta las tablas *congeladas* superan a las aleatorias (83.6–86.6% vs 82.5%). Aquí el conocimiento preentrenado transfiere semántica (p. ej. “stocks”≈“shares”) que 1k etiquetas no pueden enseñar. Fine-tuning > frozen en ambos regímenes, porque corrige los vectores faltantes y los adapta al dominio.
+A\) **Con datos suficientes**, el baseline TF-IDF es el mejor (92.2%) y los neuronales con fine-tune quedan en ~91.8%; los embeddings aleatorios (91.75%) casi igualan a los preentrenados con fine-tune: con 108k ejemplos la tabla aprende lo que necesita de la tarea. **Frozen** pierde 2.3–4.3 pts: un espacio entrenado para predecir contextos en Wikipedia no separa por tópico de noticias tan bien como uno ajustado, y las palabras sin vector (28% del vocabulario con el SGNS propio) quedan en cero. GloVe congelado supera al SGNS congelado (+2 pts) por mayor cobertura y calidad (≈300× más datos).
+
+:::
+
+::: lista
+
+B\) **Con 1,000 ejemplos**, el orden se invierte: GloVe fine-tune llega a 86.9% (+4.4 pts sobre aleatorio y +4.5 sobre TF-IDF), SGNS fine-tune a 86.1% y hasta las tablas *congeladas* superan a las aleatorias (83.6–86.6% vs 82.5%). Aquí el conocimiento preentrenado transfiere semántica (p. ej. “stocks”≈“shares”) que 1k etiquetas no pueden enseñar. Fine-tuning > frozen en ambos regímenes, porque corrige los vectores faltantes y los adapta al dominio.
+
+:::
 
 # 5. Conclusiones
 
-(1) El SGNS en PyTorch reproduce a gensim con ventaja de calidad moderada; la implementación es correcta. (2) El tamaño del corpus domina sobre cualquier hiperparámetro: 20M tokens no alcanzan para igualar a GloVe (6B) en analogías. (3) La ventana controla el tipo de similitud: pequeña → sintáctica, grande → semántica/temática. (4) Los embeddings preentrenados valen más cuanto menos datos etiquetados hay; con 100k+ ejemplos un TF-IDF o una tabla aleatoria compiten. Limitaciones: embeddings propios entrenados sobre el 20% de WikiText-103, barrido de hiperparámetros con gensim en 5M tokens (no con el SGNS propio), y analogías evaluadas sobre el subconjunto cubierto (63%). Vectores del mejor modelo propio: `data/vectors/best_sgns.kv`.
+::: lista
+
+A\) El SGNS en PyTorch reproduce a gensim con ventaja de calidad moderada; la implementación es correcta.
+
+:::
+
+::: lista
+
+B\) El tamaño del corpus domina sobre cualquier hiperparámetro: 20M tokens no alcanzan para igualar a GloVe (6B) en analogías.
+
+:::
+
+::: lista
+
+C\) La ventana controla el tipo de similitud: pequeña → sintáctica, grande → semántica/temática.
+
+:::
+
+::: lista
+
+D\) Los embeddings preentrenados valen más cuanto menos datos etiquetados hay; con 100k+ ejemplos un TF-IDF o una tabla aleatoria compiten.
+
+:::
+
+::: lista
+
+E\) Limitaciones: embeddings propios entrenados sobre el 20% de WikiText-103, barrido de hiperparámetros con gensim en 5M tokens (no con el SGNS propio), y analogías evaluadas sobre el subconjunto cubierto (63%). Vectores del mejor modelo propio: `data/vectors/best_sgns.kv`.
+
+:::
