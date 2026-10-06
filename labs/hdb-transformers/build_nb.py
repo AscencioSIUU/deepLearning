@@ -174,6 +174,137 @@ sns.heatmap(sim, ax=axs[1], cmap="viridis", cbar=False); axs[1].set(title="cosen
 plt.tight_layout(); plt.savefig("posenc.png", dpi=150); plt.show()
 """)
 
+# ================================================================== Parte 2
+md("""
+# Parte 2 — Atención en BERT y GPT-2
+
+Se cargan los modelos con `attn_implementation="eager"` y `output_attentions=True` (la implementación SDPA fusionada
+no devuelve los pesos). `get_attn` devuelve un tensor `(capas, cabezas, T, T)`: ambos modelos tienen 12 capas × 12 cabezas.
+""")
+code("""
+from transformers import AutoTokenizer, AutoModel
+from transformers.utils import logging as hf_logging
+hf_logging.set_verbosity_error()
+
+def load(name):
+    tok = AutoTokenizer.from_pretrained(name)
+    model = AutoModel.from_pretrained(name, attn_implementation="eager", output_attentions=True).eval()
+    return tok, model
+
+@torch.no_grad()
+def get_attn(tok, model, text):
+    enc = tok(text, return_tensors="pt")
+    A = torch.stack(model(**enc).attentions)[:, 0]          # (L, H, T, T)
+    return A, tok.convert_ids_to_tokens(enc["input_ids"][0])
+
+bert_tok, bert = load("bert-base-uncased")
+gpt_tok, gpt = load("gpt2")
+A, toks = get_attn(bert_tok, bert, "The animal didn't cross the street because it was too tired.")
+print("BERT:", tuple(A.shape), toks)
+""")
+
+md("""
+## 2.1 Mapas de calor de BERT por capa y cabeza
+
+Filas = token que atiende (*query*), columnas = token atendido (*key*). Cada fila suma 1. Se muestran 4 cabezas de las
+capas 1, 6 y 12.
+""")
+code("""
+def plot_heads(A, toks, layers, heads, fname=None, cmap="viridis"):
+    fig, axs = plt.subplots(len(layers), len(heads), figsize=(3.1 * len(heads), 3.0 * len(layers)), squeeze=False)
+    for i, l in enumerate(layers):
+        for j, h in enumerate(heads):
+            ax = axs[i, j]
+            sns.heatmap(A[l, h].numpy(), ax=ax, cmap=cmap, cbar=False, vmin=0, vmax=1,
+                        xticklabels=toks, yticklabels=toks if j == 0 else False)
+            ax.set_title(f"capa {l+1}, cabeza {h+1}")
+            ax.tick_params(labelsize=6)
+    plt.tight_layout()
+    if fname: plt.savefig(fname, dpi=130)
+    plt.show()
+
+plot_heads(A, toks, layers=[0, 5, 11], heads=[0, 3, 6, 9], fname="bert_heatmaps.png")
+""")
+code("""
+# Patrones cuantificados: masa de atención en [CLS]/[SEP], en el token anterior y en el siguiente (media sobre cabezas)
+def pattern_stats(A, toks):
+    T = len(toks)
+    special = torch.tensor([t in ("[CLS]", "[SEP]") for t in toks])
+    prev = torch.stack([A[:, :, i, i - 1] for i in range(1, T)], -1).mean(-1)       # (L, H)
+    nxt = torch.stack([A[:, :, i, i + 1] for i in range(T - 1)], -1).mean(-1)
+    return pd.DataFrame({"capa": range(1, A.shape[0] + 1),
+                         "[CLS]/[SEP]": A[..., special].sum(-1).mean((1, 2)).numpy(),
+                         "token previo (media)": prev.mean(1).numpy(), "token previo (cabeza max)": prev.max(1).values.numpy(),
+                         "token siguiente (media)": nxt.mean(1).numpy(), "token siguiente (cabeza max)": nxt.max(1).values.numpy()}).set_index("capa")
+
+pattern_stats(A, toks).round(3)
+""")
+md("""
+**Observaciones.** En capas intermedias/altas gran parte de la masa se concentra en `[CLS]`/`[SEP]` (tokens "de reposo" para
+cabezas sin nada útil que hacer, ver Clark et al., 2019) y existen cabezas casi puramente posicionales (token previo / siguiente),
+sobre todo en capas tempranas. La atención de BERT es bidireccional: la matriz no es triangular.
+""")
+
+md("""
+## 2.2 Resolución de correferencia
+
+*"The animal didn't cross the street because it was too **tired**/**wide**."* El pronombre `it` se refiere a *animal* en la primera
+y a *street* en la segunda. Para cada cabeza se mide, entre los dos candidatos, la fracción de atención de `it` que va a *animal*:
+`r = A[it→animal] / (A[it→animal] + A[it→street])`. Una cabeza "resuelve" la correferencia si `r > 0.5` con *tired* y `r < 0.5` con *wide*.
+Como `r` es una razón, se vuelve ruido si la cabeza casi no mira a ninguno de los dos candidatos; solo se consideran cabezas con
+≥ 5% de masa sobre *animal* + *street* en ambas frases (en gris en el mapa las descartadas).
+""")
+code("""
+s_tired = "The animal didn't cross the street because it was too tired."
+s_wide = "The animal didn't cross the street because it was too wide."
+
+def coref_ratio(sentence):
+    A, toks = get_attn(bert_tok, bert, sentence)
+    it, an, st = toks.index("it"), toks.index("animal"), toks.index("street")
+    a, s = A[:, :, it, an], A[:, :, it, st]
+    return a / (a + s), a + s, A, toks, (it, an, st)
+
+r_t, m_t, A_t, toks_t, idx = coref_ratio(s_tired)
+r_w, m_w, A_w, toks_w, _ = coref_ratio(s_wide)
+# r es ruidoso si la cabeza casi no mira a ninguno de los dos candidatos: exigir masa >= 5% sobre animal+street en ambas frases
+elig = torch.minimum(m_t, m_w) >= 0.05
+flip = (r_t > 0.5) & (r_w < 0.5) & elig
+print(f"cabezas con masa suficiente sobre los candidatos: {int(elig.sum())}/144")
+print(f"  de ellas, resuelven en ambos sentidos (r>0.5 con tired y r<0.5 con wide): {int(flip.sum())}  [azar ~25% = {elig.sum()/4:.0f}]")
+print(f"media r (tired) = {r_t[elig].mean():.3f} | media r (wide) = {r_w[elig].mean():.3f}  (0.5 = sin preferencia)")
+print("por capa, cabezas que resuelven:", flip.sum(1).tolist())
+
+diff = (r_t - r_w)
+score = torch.where(elig, diff, torch.full_like(diff, -9))   # ranking solo entre cabezas elegibles
+top = [(int(l) + 1, int(h) + 1) for l, h in zip(*np.unravel_index(np.argsort(-score.numpy(), axis=None)[:5], diff.shape))]
+print("top-5 (capa, cabeza) por r_tired - r_wide:", top, [round(float(diff[l-1, h-1]), 3) for l, h in top])
+""")
+code("""
+fig, axs = plt.subplots(1, 3, figsize=(13, 3.6))
+for ax, M, t in [(axs[0], r_t, "r con 'tired'"), (axs[1], r_w, "r con 'wide'"), (axs[2], diff, "r_tired − r_wide")]:
+    sns.heatmap(M.masked_fill(~elig, float("nan")).numpy(), ax=ax, cmap="RdBu_r" if M is diff else "viridis", center=0 if M is diff else None,
+                xticklabels=range(1, 13), yticklabels=range(1, 13), cbar=True)
+    ax.set(title=t, xlabel="cabeza", ylabel="capa")
+plt.tight_layout(); plt.savefig("bert_coref_matrix.png", dpi=150); plt.show()
+
+l, h = top[0][0] - 1, top[0][1] - 1
+fig, axs = plt.subplots(1, 2, figsize=(11, 5))
+for ax, A_, tk, name in [(axs[0], A_t, toks_t, "tired"), (axs[1], A_w, toks_w, "wide")]:
+    sns.heatmap(A_[l, h].numpy(), ax=ax, cmap="viridis", cbar=False, xticklabels=tk, yticklabels=tk, vmin=0, vmax=1)
+    ax.set_title(f"capa {l+1}, cabeza {h+1} — '{name}'"); ax.tick_params(labelsize=7)
+plt.tight_layout(); plt.savefig("bert_coref_head.png", dpi=150); plt.show()
+print(f"it→animal / it→street en esa cabeza: tired {A_t[l,h,idx[0],idx[1]]:.3f}/{A_t[l,h,idx[0],idx[2]]:.3f} | "
+      f"wide {A_w[l,h,idx[0],idx[1]]:.3f}/{A_w[l,h,idx[0],idx[2]]:.3f}")
+""")
+
+md("""
+**Lectura.** A nivel agregado el efecto es débil: de 61 cabezas con masa suficiente, 14 (23%) resuelven en ambos sentidos, lo mismo que
+esperaría el azar (~25%), y se concentran en capas 7–12. Sin embargo, algunas cabezas separan claramente los casos (capa 7 cabeza 11:
+con *tired* `it→animal` 0.28 vs `it→street` 0.07; con *wide* 0.01 vs 0.59). Dos cautelas: (i) escoger la mejor de 61 cabezas sobre un solo
+par de oraciones es selección (comparaciones múltiples), no evidencia de que esa cabeza "haga correferencia"; (ii) la atención solo
+muestra de dónde se lee información, no que el modelo use ese resultado (ver discusión sobre interpretabilidad).
+""")
+
 nb.cells = cells
 nb.metadata["kernelspec"] = {"display_name": "Python 3", "language": "python", "name": "python3"}
 nbf.write(nb, "notebook.ipynb")
