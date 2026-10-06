@@ -142,3 +142,14 @@ figcaption, .figure-caption {
   vertical-align: top;
   margin: 3pt 0.1%;
 }
+
+/* Referencias APA 7: sangría francesa, alineadas a la izquierda */
+.refs p {
+  text-align: left;
+  padding-left: 0.5in;
+  text-indent: -0.5in;
+  margin: 0 0 4pt 0;
+  font-size: 9.5pt;
+  line-height: 1.3;
+  word-break: break-all;
+}
