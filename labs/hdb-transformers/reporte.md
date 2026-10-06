@@ -1,6 +1,6 @@
 <h1 class="title">CC3092 — Deep Learning y Sistemas Inteligentes</h1>
 <p class="subtitle">Hoja de Trabajo #2: Transformers y Mecanismos de Atención</p>
-<p class="author">Ernesto Ascencio · Carné 23009<br>git clone https://github.com/AscencioSIUU/deepLearning.git · carpeta <code>labs/hdb-transformers</code></p>
+<p class="author">Ernesto Ascencio<br>Carné 23009<br>git clone https://github.com/AscencioSIUU/deepLearning.git<br>Carpeta <code>labs/hdb-transformers</code></p>
 
 # 1. De las RNN a la atención
 
