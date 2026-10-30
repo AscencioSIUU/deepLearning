@@ -140,6 +140,7 @@ print(f"clientes totales: {raw.shape[1]} | con datos desde 2012-01-01: {started.
 rng = np.random.default_rng(SEED)
 CLIENTS = sorted(rng.choice(complete[complete].index, N_CLIENTS, replace=False))
 Y = hourly[CLIENTS].copy()
+del raw, hourly                                         # libera ~0.5 GB (el entrenamiento en MPS comparte la RAM)
 print(f"panel: {Y.shape[1]} clientes × {Y.shape[0]:,} horas = {Y.size:,} observaciones horarias")
 """)
 
@@ -441,9 +442,9 @@ assert len(TEST_ORIGINS) == len(VAL_ORIGINS) == 92
 SCALE = Y.loc[:TRAIN_END].diff(24).abs().mean()           # escala MASE por cliente (kWh)
 QS = (0.1, 0.5, 0.9)
 
-def origins_for(H, origins=TEST_ORIGINS):
-    \"\"\"Orígenes cuyo horizonte completo cae dentro de los datos (H=168 -> 86 orígenes de prueba).\"\"\"
-    return origins[origins + pd.Timedelta(hours=H - 1) <= END]
+def origins_for(H, origins=TEST_ORIGINS, end=END):
+    \"\"\"Orígenes cuyo horizonte completo cae dentro del bloque (H=168 -> 86 orígenes de prueba).\"\"\"
+    return origins[origins + pd.Timedelta(hours=H - 1) <= end]
 
 def to_long(P, origins, H):
     \"\"\"(n_orig, N, H) -> formato largo unique_id, ds, origin, h, y, y_hat [, q10, q50, q90].\"\"\"
@@ -699,8 +700,14 @@ y en cada posición se predice el siguiente valor. El decoder del seq2seq recibe
 (no consume y), así que no tiene exposure bias y sus 24 salidas se producen en una sola pasada.
 """)
 code("""
-import copy
+import copy, gc
 import torch.nn.functional as F
+
+def free_mps():
+    \"\"\"Devuelve al sistema la caché de MPS entre entrenamientos (la RAM es compartida con la GPU).\"\"\"
+    gc.collect()
+    if DEVICE.type == "mps":
+        torch.mps.empty_cache()
 
 class RevIN(nn.Module):
     \"\"\"Reversible instance normalization del canal y de cada ventana (con afín aprendible).\"\"\"
@@ -807,7 +814,8 @@ class LSTMAR(Forecaster):
     def train_loss(self, x, y, cf):
         \"\"\"Teacher forcing: la entrada se extiende con los y reales del horizonte (desplazados un paso).\"\"\"
         if self.rev:
-            x, y = self.rev.norm(x), None if y is None else self.rev.norm_y(y)
+            x = self.rev.norm(x)
+            y = self.rev.norm_y(y)
         seq = torch.cat([x, torch.cat([y[:, :-1, None], cf[:, :-1]], -1)], 1)
         out, _ = self.lstm(seq)
         return F.l1_loss(self.head(out)[..., 0], torch.cat([x[:, 1:, 0], y], 1))
@@ -839,10 +847,12 @@ print("formas OK:", list(ARCH))
 md("""
 ### Entrenamiento
 
-`TorchModel` adapta cualquier arquitectura al protocolo `fit/predict`. `fit()` muestrea en cada epoch 200k ventanas al azar
-del bloque de entrenamiento (de 2.17M posibles con stride 1; se recorre todo el bloque cada ~11 epochs) y al final de cada
-epoch pronostica los 92 orígenes de **validación** (00:00 de cada día) para la pérdida, el MAE y el MASE de validación.
-Early stopping con paciencia 4 sobre la pérdida de validación y se restauran los mejores pesos. La prueba nunca se usa aquí.
+`TorchModel` adapta cualquier arquitectura al protocolo `fit/predict`. `fit()` muestrea en cada epoch 100k ventanas al azar
+del bloque de entrenamiento (de 2.17M posibles con stride 1) y al final de cada epoch pronostica los 92 orígenes de
+**validación** (00:00 de cada día) para la pérdida, el MAE y el MASE de validación. Máximo 15 epochs, early stopping con
+paciencia 3 sobre la pérdida de validación y se restauran los mejores pesos. La prueba nunca se usa aquí. Batch de 512: en
+MPS la LSTM con L = 168 procesa ~2,800 muestras/s con 3.4 GB, contra ~400 muestras/s en CPU. Con batch 1024 necesita
+6.7 GB y, con la memoria del equipo casi llena (swap), cada epoch tardó 3–5× más (iteración `LSTM-b1024`).
 """)
 code("""
 def norm_panel(kind):
@@ -855,8 +865,8 @@ def count_params(net):
     return sum(p.numel() for p in ps), sum(p.numel() for p in ps if p.requires_grad)
 
 class TorchModel:
-    def __init__(self, arch, L=L, H=H, months=None, norm="series", lr=1e-3, batch=512, epochs=25,
-                 samples=200_000, patience=4, seed=SEED, series=None, **net_kw):
+    def __init__(self, arch, L=L, H=H, months=None, norm="series", lr=1e-3, batch=512, epochs=15,
+                 samples=100_000, patience=3, seed=SEED, series=None, **net_kw):
         self.arch, self.L, self.H, self.months, self.norm, self.net_kw = arch, L, H, months, norm, net_kw
         self.lr, self.batch, self.epochs, self.samples, self.patience, self.seed = lr, batch, epochs, samples, patience, seed
         self.series = np.arange(N) if series is None else np.asarray(series)
@@ -875,7 +885,7 @@ class TorchModel:
         return torch.from_numpy(x), torch.from_numpy(C[t0[:, None] + np.arange(self.H)])
 
     @torch.no_grad()
-    def _forecast(self, Zn, t0s, bs=4096):
+    def _forecast(self, Zn, t0s, bs=1024):
         self.net.eval()
         x, cf = self._inputs(Zn, t0s)
         out = torch.cat([self.net(x[i:i + bs].to(DEVICE), cf[i:i + bs].to(DEVICE)).cpu() for i in range(0, len(x), bs)])
@@ -922,6 +932,8 @@ class TorchModel:
                     break
         self.net.load_state_dict(state)
         self.epoch_s = np.mean([h["epoch_s"] for h in self.history])
+        del dl, ds, opt, state
+        free_mps()
 
     def predict(self, origins, H):
         assert H == self.H
@@ -929,16 +941,18 @@ class TorchModel:
         return {"y_hat": self._forecast(Zn, Y.index.get_indexer(origins))}
 
 ITERS = {}
+VAL_MASE, MAKE = {}, {}                  # modelo registrado -> MASE de validación / fábrica para re-entrenar
 
 def iterate(name, arch, **cfg):
     \"\"\"Una iteración de §5.2: train + early stopping/selección en validación (92 orígenes). No toca la prueba.\"\"\"
     def go():
         m = TorchModel(arch, **cfg)
-        res = backtest(m, VAL_ORIGINS, m.H)
+        res = backtest(m, origins_for(m.H, VAL_ORIGINS, VAL_END), m.H)
         res["val"] = evaluate(res.pop("fc"))
         res["state"] = {k: v.cpu() for k, v in m.net.state_dict().items()}
         return res
     res = cached(f"it_{name}", go)
+    free_mps()
     ITERS[name] = {"arch": arch, "cfg": cfg, **res}
     h = res["history"][-1]
     print(f"{name:16s} epochs {h['epoch']:2d} | val MAE {res['val']['MAE']:7.2f} | val MASE {res['val']['MASE']:.3f} "
@@ -962,6 +976,7 @@ def test_torch(name, it_name, family, strategy, covariates):
         return res
     res = cached(f"bt_{name}", go)
     register(name, res, family, L_=it["cfg"].get("L", L), strategy=strategy, covariates=covariates, hw=HARDWARE)
+    VAL_MASE[name], MAKE[name] = it["val"]["MASE"], lambda seed=SEED: TorchModel(it["arch"], seed=seed, **it["cfg"])
     return res
 
 print(future_masked(TorchModel("LSTM-AR").build()))         # la AR realimenta predicciones: el caso más delicado
@@ -979,8 +994,7 @@ LSTM_BASE = dict(L=168, hidden=128, layers=2, dropout=0.1, lr=1e-3, batch=512, n
 LSTM_RUNS = {"LSTM-base": {}, "LSTM-L48": {"L": 48}, "LSTM-L336": {"L": 336},
              "LSTM-3m": {"months": 3}, "LSTM-12m": {"months": 12},
              "LSTM-global": {"norm": "global"}, "LSTM-revin": {"norm": "revin"},
-             "LSTM-h256": {"hidden": 256}, "LSTM-1capa": {"layers": 1}, "LSTM-drop0.3": {"dropout": 0.3},
-             "LSTM-lr3e-3": {"lr": 3e-3}, "LSTM-b128": {"batch": 128}}
+             "LSTM-h256": {"hidden": 256}, "LSTM-lr3e-3": {"lr": 3e-3}, "LSTM-b1024": {"batch": 1024}}
 for name, ch in LSTM_RUNS.items():
     iterate(name, "LSTM", **{**LSTM_BASE, **ch})
 """)
@@ -1008,7 +1022,7 @@ best_lstm = best_of("LSTM-")
 cfg_best = ITERS[best_lstm]["cfg"]
 print("mejor LSTM en validación:", best_lstm, cfg_best)
 iterate("LSTMAR-best", "LSTM-AR", **cfg_best)
-iterate("Seq2seq-best", "Seq2seq", **cfg_best)
+_ = iterate("Seq2seq-best", "Seq2seq", **cfg_best)
 """)
 code("""
 test_torch("LSTM", best_lstm, "Recurrente", "multi-salida", "calendario")
@@ -1089,7 +1103,7 @@ own = {k: v for k, v in ITERS.items() if not k.endswith("H168")}
 best_own = min(own, key=lambda k: own[k]["val"]["MASE"])
 print("mejor modelo propio en validación:", best_own, ITERS[best_own]["arch"], ITERS[best_own]["cfg"])
 LOCAL10 = np.sort(np.random.default_rng(SEED).choice(N, 10, replace=False))
-glob_name = {"LSTM": "LSTM", "DLinear": "DLinear", "NLinear": "NLinear", "MLP": "MLP", "LSTM-AR": "LSTM-AR", "Seq2seq": "Seq2seq"}[ITERS[best_own]["arch"]]
+glob_name = ITERS[best_own]["arch"]                                # nombre con el que se registró en prueba
 
 def local_runs():
     out = {}
@@ -1108,6 +1122,330 @@ loc["media_kWh"] = means[loc.index].round(1)
 loc["mejora_global_%"] = (100 * (1 - loc.MASE_global / loc.MASE_local)).round(1)
 print(loc.round(3))
 print("MASE medio en los 10 clientes -> local:", loc.MASE_local.mean().round(3), "| global:", loc.MASE_global.mean().round(3))
+""")
+
+# ================================================================== 5. Librerías
+batch(4)
+md("""
+### Modelos de librería: NeuralForecast
+
+N-HiTS, TCN, PatchTST, TFT y DeepAR con la misma ventana L = 168, H = 24, `scaler_type="robust"` (normalización por
+ventana), hasta 1,500 pasos con early stopping sobre el bloque de validación (`val_size` = 2,208 h) y MPS. PatchTST no
+admite covariables futuras en NeuralForecast; los demás reciben el calendario como `futr_exog_list`. DeepAR es
+probabilístico (Student-t, intervalo del 80 % = P10–P90; el pronóstico puntual es la mediana).
+
+`predict()` respeta el protocolo sin re-entrenar: arma una serie nueva por (origen, cliente) con las 192 h previas al
+origen y llama una sola vez a `nf.predict` con el calendario futuro (`futr_df`). Como los modelos son globales y
+normalizan cada ventana, el resultado es el mismo que pronosticar desde la serie completa cortada en el origen.
+""")
+code("""
+import logging
+from neuralforecast import NeuralForecast
+from neuralforecast.models import NHITS, TCN, PatchTST, TFT, DeepAR
+from neuralforecast.losses.pytorch import DistributionLoss
+for lg in ("pytorch_lightning", "lightning", "lightning.pytorch", "lightning.fabric", "neuralforecast"):
+    logging.getLogger(lg).setLevel(logging.ERROR)
+
+EXOG = list(CAL.columns)
+NF_CTX = L + 24
+
+def nf_long(Yw):
+    return long_df(Yw).join(CAL, on="ds")
+
+def nf_kw(seed=SEED, **kw):
+    base = dict(h=H, input_size=L, max_steps=1500, val_check_steps=100, early_stop_patience_steps=5,
+                scaler_type="robust", batch_size=32, windows_batch_size=256, learning_rate=1e-3, random_seed=seed,
+                accelerator=DEVICE.type, enable_progress_bar=False, enable_model_summary=False, logger=False)
+    return {**base, **kw}
+
+class NFModel:
+    \"\"\"Adaptador de un modelo de NeuralForecast al protocolo fit/predict.\"\"\"
+
+    def __init__(self, make, months=None, seed=SEED):
+        self.make, self.months, self.seed = make, months, seed
+
+    def fit(self, train_end, val_end):
+        start = train_end + pd.Timedelta("1h") - pd.DateOffset(months=self.months) if self.months else TRAIN_START
+        self.nf = NeuralForecast(models=[self.make(self.seed)], freq="h")
+        self.nf.fit(nf_long(Y.loc[start:val_end]), val_size=len(Y.loc[train_end:val_end]) - 1)
+        self.n_params = count_params(self.nf.models[0])
+
+    def predict(self, origins, H):
+        t_o = Y.index.get_indexer(origins)
+        ids = np.array([f"{k:03d}|{c}" for k in range(len(t_o)) for c in CLIENTS])
+        past = t_o[:, None] + np.arange(-NF_CTX, 0)
+        hist = pd.DataFrame({"unique_id": np.repeat(ids, NF_CTX), "ds": Y.index[np.repeat(past, N, axis=0).ravel()],
+                             "y": Y.values[past].transpose(0, 2, 1).ravel()}).join(CAL, on="ds")
+        futr = pd.DataFrame({"unique_id": np.repeat(ids, H),
+                             "ds": Y.index[np.repeat(t_o[:, None] + np.arange(H), N, axis=0).ravel()]}).join(CAL, on="ds")
+        p = self.nf.predict(df=hist, futr_df=futr).sort_values(["unique_id", "ds"])
+        assert (p.unique_id.values[::H] == ids).all()
+        name = type(self.nf.models[0]).__name__
+        get = lambda col: p[col].values.reshape(len(t_o), N, H)
+        if f"{name}-lo-80" in p:                                   # DeepAR: mediana + intervalo 80 % (P10, P90)
+            med = get(f"{name}-median")
+            return {"y_hat": med, "q10": get(f"{name}-lo-80"), "q50": med, "q90": get(f"{name}-hi-80")}
+        return {"y_hat": get(name)}
+
+NF_MODELS = {
+    "NHITS": (lambda s: NHITS(**nf_kw(s, futr_exog_list=EXOG)), "Residual (MLP)", "multi-salida", "calendario"),
+    "TCN": (lambda s: TCN(**nf_kw(s, futr_exog_list=EXOG, kernel_size=2, dilations=[1, 2, 4, 8, 16, 32, 64, 128],
+                                  encoder_hidden_size=128)), "Convolucional", "multi-salida", "calendario"),
+    "PatchTST": (lambda s: PatchTST(**nf_kw(s, patch_len=24, stride=12, hidden_size=128, n_heads=8)),
+                 "Atención", "multi-salida", "no"),
+    "TFT": (lambda s: TFT(**nf_kw(s, futr_exog_list=EXOG, hidden_size=64)), "Atención", "multi-salida", "calendario"),
+    "DeepAR": (lambda s: DeepAR(**nf_kw(s, futr_exog_list=EXOG, lstm_hidden_size=128,
+                                        loss=DistributionLoss("StudentT", level=[80]))),
+               "Probabilístico", "autorregresiva (muestreo)", "calendario"),
+}
+
+def nf_run(name, months=None, test=True, key=None):
+    \"\"\"Entrena una vez (train + early stopping en val), mide validación y, si test, pronostica la prueba una vez.\"\"\"
+    make, family, strategy, cov = NF_MODELS[name]
+    def go():
+        m = NFModel(make, months)
+        val = backtest(m, VAL_ORIGINS)
+        out = {"val": evaluate(val["fc"]), "train_s": val["train_s"]}
+        if test:
+            out["test"] = backtest(m, TEST_ORIGINS, fit=False)
+            out["test"].update(train_s=val["train_s"], n_params=m.n_params)
+        return out
+    out = cached(f"nf_{key or name}", go)
+    free_mps()
+    if test:
+        register(name, out["test"], family, strategy=strategy, covariates=cov, hw=HARDWARE)
+        VAL_MASE[name], MAKE[name] = out["val"]["MASE"], lambda seed=SEED: NFModel(make, seed=seed)
+    print(f"{key or name:14s} val MASE {out['val']['MASE']:.3f} | train {out['train_s']:.0f} s")
+    return out
+
+NF_OUT = {name: nf_run(name) for name in NF_MODELS}
+show()
+""")
+
+md("""
+### Chronos-Bolt (zero-shot)
+
+`amazon/chronos-bolt-small` sin entrenamiento: recibe las últimas 2,048 h (≈12 semanas) de cada cliente en kWh y devuelve
+los cuantiles 0.1/0.5/0.9 de las próximas H horas. El pronóstico puntual es la mediana. Solo se mide el tiempo de
+inferencia; cargar los pesos no cuenta como entrenamiento.
+""")
+code("""
+from chronos import BaseChronosPipeline
+
+class ChronosModel:
+    def __init__(self, model_id="amazon/chronos-bolt-small", ctx=2048):
+        self.model_id, self.ctx = model_id, ctx
+
+    def fit(self, train_end, val_end):
+        self.pipe = BaseChronosPipeline.from_pretrained(self.model_id, device_map=DEVICE.type, torch_dtype=torch.float32)
+        self.n_params = count_params(self.pipe.model)
+
+    def predict(self, origins, H, bs=1024):
+        t_o = Y.index.get_indexer(origins)
+        ctx = Y.values[t_o[:, None] + np.arange(-self.ctx, 0)].transpose(0, 2, 1).reshape(-1, self.ctx)
+        qs = [self.pipe.predict_quantiles(torch.tensor(ctx[i:i + bs], dtype=torch.float32), prediction_length=H,
+                                          quantile_levels=list(QS))[0].float().cpu().numpy()
+              for i in range(0, len(ctx), bs)]
+        q = np.concatenate(qs).reshape(len(t_o), N, H, len(QS))
+        return {"y_hat": q[..., 1], "q10": q[..., 0], "q50": q[..., 1], "q90": q[..., 2]}
+
+def chronos_runs():
+    cm = ChronosModel()
+    val = backtest(cm, VAL_ORIGINS)
+    test = backtest(cm, TEST_ORIGINS, fit=False)
+    test["n_params"] = cm.n_params
+    return {"val": evaluate(val["fc"]), "test": test, "h168": backtest(cm, origins_for(168), 168, fit=False)}
+
+CHR = cached("chronos", chronos_runs)
+register("Chronos-Bolt", CHR["test"], "Fundacional", L_=2048, strategy="directa (cuantiles)", covariates="no", hw=HARDWARE)
+register("Chronos-Bolt", CHR["h168"], "Fundacional", H_=168)
+REG["Chronos-Bolt"]["train_s"] = np.nan                         # zero-shot: solo inferencia
+VAL_MASE["Chronos-Bolt"] = CHR["val"]["MASE"]
+print("Chronos val MASE", round(CHR["val"]["MASE"], 3), "| parámetros", f"{CHR['test']['n_params'][0]:,}")
+show()
+""")
+
+md("""
+### Pronóstico probabilístico
+
+DeepAR y Chronos entregan P10, P50 y P90. Pinball loss promedio sobre los tres cuantiles (kWh) y cobertura empírica del
+intervalo P10–P90 (nominal 80 %).
+""")
+code("""
+prob = pd.DataFrame({n: REG[n] for n in ["DeepAR", "Chronos-Bolt"]}).T[["MAE", "MASE", "pinball", "cov80"]].astype(float)
+print(prob.round(3))
+fig, ax = plt.subplots(figsize=(11, 3))
+cid = CLIENTS[0]
+for n, c in [("DeepAR", "C1"), ("Chronos-Bolt", "C2")]:
+    f = FCS[n][(FCS[n].unique_id == cid) & FCS[n].ds.between("2014-12-20", "2014-12-30 23:00")]
+    ax.fill_between(f.ds, f.q10, f.q90, alpha=0.25, color=c, label=f"{n} P10–P90")
+    ax.plot(f.ds, f.q50, color=c, lw=1)
+ax.plot(f.ds, f.y, color="k", lw=1.2, label="real")
+ax.set(title=f"Intervalos P10–P90 alrededor de Navidad ({cid})", ylabel="kWh"); ax.legend(ncol=3, fontsize=8)
+plt.tight_layout(); plt.savefig(FIGS / "probabilistico.png", dpi=150); plt.show()
+""")
+
+md("""
+### Historia de entrenamiento (3, 12 y 30 meses) en validación
+
+Datos para la gráfica (3) de §6: MASE de validación según los meses de historia para seasonal naive (no depende de la
+historia), LightGBM, DLinear, LSTM y PatchTST, con Chronos (zero-shot) como referencia.
+""")
+code("""
+def lgbm_val(months):
+    m = lgbm if months is None else LGBMRecursive(months=months)
+    return evaluate(backtest(m, VAL_ORIGINS, fit=months is not None)["fc"])["MASE"]
+
+HIST = pd.DataFrame({
+    "SNaive24": {mo: cached("val_SNaive24", lambda: evaluate(backtest(SFModel(SeasonalNaive(24)), VAL_ORIGINS)["fc"])["MASE"])
+                 for mo in (3, 12, 30)},
+    "LightGBM": {mo: cached(f"val_lgbm_{mo}", lambda: lgbm_val(None if mo == 30 else mo)) for mo in (3, 12, 30)},
+    "DLinear": {3: ITERS["DLinear-L336-3m"]["val"]["MASE"], 12: ITERS["DLinear-L336-12m"]["val"]["MASE"],
+                30: ITERS["DLinear-L336"]["val"]["MASE"]},
+    "LSTM": {3: ITERS["LSTM-3m"]["val"]["MASE"], 12: ITERS["LSTM-12m"]["val"]["MASE"], 30: ITERS["LSTM-base"]["val"]["MASE"]},
+    "PatchTST": {3: nf_run("PatchTST", 3, False, "PatchTST-3m")["val"]["MASE"],
+                 12: nf_run("PatchTST", 12, False, "PatchTST-12m")["val"]["MASE"], 30: NF_OUT["PatchTST"]["val"]["MASE"]},
+})
+HIST.index.name = "meses"
+HIST.round(3)
+""")
+
+md("""
+### Reentrenamiento mensual
+
+El mejor modelo de deep learning (por MASE de validación) y LightGBM se re-entrenan al inicio de octubre, noviembre y
+diciembre con ventana expandible (validación = los 92 días previos a cada corte) y pronostican los orígenes de ese mes.
+Los baselines de StatsForecast ya se re-ajustan en **cada** origen (son locales), así que reentrenarlos al inicio de cada
+mes no cambia nada: su protocolo ya es más frecuente que el mensual.
+""")
+code("""
+DL_FAMILIES = ("MLP", "Recurrente", "Encoder–decoder", "Residual (MLP)", "Convolucional", "Atención", "Probabilístico")
+dl = {n: v for n, v in VAL_MASE.items() if REG[n]["familia"] in DL_FAMILIES}
+BEST_DL = min(dl, key=dl.get)
+print("val MASE de los modelos de DL:", {k: round(v, 3) for k, v in sorted(dl.items(), key=lambda kv: kv[1])})
+print("mejor DL en validación:", BEST_DL)
+
+def monthly(make):
+    fcs, tr = [], 0.0
+    for m0 in pd.to_datetime(["2014-10-01", "2014-11-01", "2014-12-01"]):
+        o = TEST_ORIGINS[(TEST_ORIGINS >= m0) & (TEST_ORIGINS < m0 + pd.offsets.MonthBegin(1))]
+        res = backtest(make(), o, H, train_end=m0 - pd.Timedelta(days=92) - pd.Timedelta("1h"),
+                       val_end=m0 - pd.Timedelta("1h"))
+        fcs.append(res["fc"])
+        tr += res["train_s"]
+    return {"fc": pd.concat(fcs, ignore_index=True), "train_s": tr}
+
+RETRAIN = {BEST_DL: cached(f"monthly_{BEST_DL}", lambda: monthly(MAKE[BEST_DL])),
+           "LightGBM": cached("monthly_LightGBM", lambda: monthly(LGBMRecursive))}
+rt = pd.DataFrame({n: {"MASE una vez": REG[n]["MASE"], "MASE mensual": evaluate(r["fc"])["MASE"],
+                       "MAE una vez": REG[n]["MAE"], "MAE mensual": evaluate(r["fc"])["MAE"],
+                       "train_s una vez": REG[n]["train_s"], "train_s mensual (3 fits)": r["train_s"]}
+                   for n, r in RETRAIN.items()}).T
+rt.astype(float).round(3)
+""")
+
+md("### Sensibilidad a la semilla (mejor modelo de DL, 3 semillas)")
+code("""
+def seed_run(seed):
+    if seed == SEED:
+        return REG[BEST_DL]["MASE"]
+    return evaluate(backtest(MAKE[BEST_DL](seed=seed))["fc"])["MASE"]
+
+SEEDS = {s: cached(f"seed_{BEST_DL}_{s}", lambda: seed_run(s)) for s in (SEED, 1, 2)}
+print(BEST_DL, {s: round(v, 4) for s, v in SEEDS.items()},
+      f"| MASE = {np.mean(list(SEEDS.values())):.3f} ± {np.std(list(SEEDS.values()), ddof=1):.3f}")
+""")
+
+# ================================================================== 6. Comparación
+batch(5)
+md("""
+## 6. Comparación de resultados
+
+Mejor configuración de cada modelo, evaluada una sola vez sobre los 92 orígenes de prueba, ordenada por MASE.
+`train_s` = entrenamiento (para los modelos locales de StatsForecast el ajuste ocurre en cada origen y está en `infer_s`;
+Chronos no entrena). `infer_s` = pronóstico de los 92 orígenes × 100 clientes.
+""")
+code("""
+COLS = ["familia", "L", "estrategia", "covariables", "params", "entrenables", "train_s", "infer_s", "hardware",
+        "MAE", "RMSE", "WAPE", "MAPE", "MASE", "MASE_H168", "MASE_xmas", "pinball", "cov80"]
+TABLE = pd.DataFrame(REG).T.reindex(columns=COLS).sort_values("MASE")
+TABLE.to_csv(RESULTS / "comparacion.csv")
+num = ["MAE", "RMSE", "WAPE", "MAPE", "MASE", "MASE_H168", "MASE_xmas", "pinball", "cov80", "train_s", "infer_s"]
+TABLE[num] = TABLE[num].astype(float).round(3)
+TABLE
+""")
+code("""
+snaive = REG["SNaive24"]["MASE"]
+print(f"mejor modelo: {TABLE.index[0]} (MASE {TABLE.MASE.iloc[0]:.3f}) | seasonal naive 24 h: {snaive:.3f} "
+      f"-> mejora {100 * (1 - TABLE.MASE.iloc[0] / snaive):.1f} %")
+fc_all = FCS[TABLE.index[0]]
+assert np.allclose(by_step(fc_all, "hour").MAE.values, by_step(fc_all).MAE.values)   # origen 00:00: hora = h - 1
+print("con orígenes a las 00:00, el error por hora del día coincide con el error por paso h (hora = h − 1)")
+""")
+
+md("### Gráficas")
+code("""
+fam_color = {f: f"C{i}" for i, f in enumerate(TABLE.familia.unique())}
+fig, ax = plt.subplots(figsize=(8, 4.6))
+t = TABLE.train_s.where(TABLE.train_s > 0, TABLE.infer_s)          # modelos sin entrenamiento: costo de ajuste/inferencia
+pts = pd.DataFrame({"t": t, "MASE": TABLE.MASE}).drop(index="Naive")
+for n, r in pts.iterrows():
+    ax.scatter(r.t, r.MASE, color=fam_color[TABLE.familia[n]], s=30, zorder=3)
+    ax.annotate(n, (r.t, r.MASE), fontsize=7, xytext=(3, 2), textcoords="offset points")
+front = pts.sort_values("t")
+front = front[front.MASE <= front.MASE.cummin()]
+ax.step(front.t, front.MASE, where="post", color="k", lw=1, ls="--", label="frontera de Pareto")
+ax.set(xscale="log", xlabel="tiempo de entrenamiento (s, log; locales y Chronos: ajuste/inferencia)", ylabel="MASE (prueba)",
+       title="Error contra costo de entrenamiento")
+ax.legend(); plt.tight_layout(); plt.savefig(FIGS / "pareto.png", dpi=150); plt.show()
+print("frontera de Pareto:", list(front.index))
+""")
+code("""
+STEP = pd.DataFrame({n: by_step(FCS[n]).MAE for n in TABLE.index if n != "Naive"})
+STEP.to_csv(RESULTS / "mae_por_paso.csv")
+fig, ax = plt.subplots(figsize=(9, 4.4))
+for i, n in enumerate(STEP.columns):
+    ax.plot(STEP.index, STEP[n], lw=1.6 if i < 5 else 0.9, ls="-" if i < 10 else "--", label=n)
+ax.set(xlabel="paso del horizonte h (= hora del día + 1)", ylabel="MAE (kWh)", title="MAE por paso del horizonte (prueba)")
+ax.legend(ncol=3, fontsize=7); plt.tight_layout(); plt.savefig(FIGS / "mae_por_paso.png", dpi=150); plt.show()
+print((STEP.iloc[-1] / STEP.iloc[0]).round(2).sort_values().to_dict())     # crecimiento del error h=24 vs h=1
+""")
+code("""
+fig, ax = plt.subplots(figsize=(6.5, 3.8))
+for n in HIST:
+    ax.plot(HIST.index, HIST[n], marker="o", label=n)
+ax.axhline(VAL_MASE["Chronos-Bolt"], color="k", ls=":", label="Chronos-Bolt (zero-shot)")
+ax.set(xticks=[3, 12, 30], xlabel="meses de historia de entrenamiento", ylabel="MASE (validación)",
+       title="MASE contra historia de entrenamiento")
+ax.legend(fontsize=8); plt.tight_layout(); plt.savefig(FIGS / "historia.png", dpi=150); plt.show()
+""")
+
+md("""
+### Navidad y Año Nuevo
+
+Semana del 22 al 28 de diciembre (incluye Nochebuena y Navidad) y error medio por día alrededor de los feriados.
+""")
+code("""
+top = [n for n in TABLE.index[:6]] + ["SNaive24", "SNaive168"]
+daily_err = pd.DataFrame({n: (FCS[n].assign(sae=(FCS[n].y_hat - FCS[n].y).abs() / FCS[n].unique_id.map(SCALE).astype(float))
+                              .groupby(FCS[n].ds.dt.date).sae.mean()) for n in dict.fromkeys(top)})
+print(daily_err.loc[pd.to_datetime(["2014-12-18", "2014-12-23", "2014-12-24", "2014-12-25", "2014-12-26",
+                                    "2014-12-31"]).date].round(2))
+fig, ax = plt.subplots(figsize=(10, 3.2))
+for n in daily_err:
+    ax.plot(pd.to_datetime(daily_err.index), daily_err[n], lw=1, label=n)
+ax.set(xlim=(pd.Timestamp("2014-12-01"), pd.Timestamp("2014-12-31")), ylabel="MASE diario", title="Error diario en diciembre")
+ax.legend(ncol=4, fontsize=7); plt.tight_layout(); plt.savefig(FIGS / "navidad.png", dpi=150); plt.show()
+""")
+
+md("### Archivos de resultados")
+code("""
+out = pd.concat([f[["unique_id", "ds", "y_hat"]].assign(modelo=n) for n, f in FCS.items()], ignore_index=True)
+out = out[["unique_id", "ds", "modelo", "y_hat"]].astype({"unique_id": str, "modelo": "category"})
+out.to_parquet(RESULTS / "pronosticos_prueba.parquet", index=False)
+pd.concat({n: per_client(f) for n, f in FCS.items()}, names=["modelo"]).round(4).to_csv(RESULTS / "metricas_por_cliente.csv")
+print(out.shape, out.modelo.nunique(), "modelos |", (RESULTS / "pronosticos_prueba.parquet").stat().st_size / 2 ** 20, "MB")
+print(sorted(p.name for p in RESULTS.iterdir()))
 """)
 
 nb.cells = [c for b, c in cells if b <= int(os.environ.get("UPTO", 99))]
