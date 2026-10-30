@@ -1,0 +1,13 @@
+torch
+pandas
+numpy
+matplotlib
+pyarrow
+holidays
+statsforecast
+neuralforecast
+lightgbm
+chronos-forecasting
+ipykernel
+nbformat
+nbconvert
