@@ -1130,9 +1130,15 @@ md("""
 ### Modelos de librería: NeuralForecast
 
 N-HiTS, TCN, PatchTST, TFT y DeepAR con la misma ventana L = 168, H = 24, `scaler_type="robust"` (normalización por
-ventana), hasta 1,500 pasos con early stopping sobre el bloque de validación (`val_size` = 2,208 h) y MPS. PatchTST no
-admite covariables futuras en NeuralForecast; los demás reciben el calendario como `futr_exog_list`. DeepAR es
+ventana), hasta 1,500 pasos con early stopping sobre el bloque de validación (`val_size` = 2,208 h) y MPS. DeepAR es
 probabilístico (Student-t, intervalo del 80 % = P10–P90; el pronóstico puntual es la mediana).
+
+**Covariables (iteración en validación).** En la primera corrida todos recibían el calendario como `futr_exog_list` y
+N-HiTS (val MASE 1.30) y DeepAR (1.40) quedaron peor que el seasonal naive. Con la normalización por ventana la red
+puede usar el mes como atajo para el nivel, que cambia de un año a otro. Por eso N-HiTS, TCN y DeepAR se entrenan con y
+sin calendario y se queda la variante con menor MASE de **validación** (la prueba solo se reporta para esa). PatchTST no
+admite covariables futuras en NeuralForecast y TFT (≈3 h por entrenamiento) se deja con calendario, que filtra con sus
+redes de selección de variables.
 
 `predict()` respeta el protocolo sin re-entrenar: arma una serie nueva por (origen, cliente) con las 192 h previas al
 origen y llama una sola vez a `nf.predict` con el calendario futuro (`futr_df`). Como los modelos son globales y
@@ -1187,21 +1193,23 @@ class NFModel:
             return {"y_hat": med, "q10": get(f"{name}-lo-80"), "q50": med, "q90": get(f"{name}-hi-80")}
         return {"y_hat": get(name)}
 
-NF_MODELS = {
-    "NHITS": (lambda s: NHITS(**nf_kw(s, futr_exog_list=EXOG)), "Residual (MLP)", "multi-salida", "calendario"),
-    "TCN": (lambda s: TCN(**nf_kw(s, futr_exog_list=EXOG, kernel_size=2, dilations=[1, 2, 4, 8, 16, 32, 64, 128],
-                                  encoder_hidden_size=128)), "Convolucional", "multi-salida", "calendario"),
-    "PatchTST": (lambda s: PatchTST(**nf_kw(s, patch_len=24, stride=12, hidden_size=128, n_heads=8)),
-                 "Atención", "multi-salida", "no"),
-    "TFT": (lambda s: TFT(**nf_kw(s, futr_exog_list=EXOG, hidden_size=64)), "Atención", "multi-salida", "calendario"),
-    "DeepAR": (lambda s: DeepAR(**nf_kw(s, futr_exog_list=EXOG, lstm_hidden_size=128,
-                                        loss=DistributionLoss("StudentT", level=[80]))),
-               "Probabilístico", "autorregresiva (muestreo)", "calendario"),
+NF_MODELS = {                                  # nombre -> (fábrica(seed, exog), familia, estrategia, variantes de exog)
+    "NHITS": (lambda s, ex: NHITS(**nf_kw(s, futr_exog_list=ex)), "Residual (MLP)", "multi-salida", (True, False)),
+    "TCN": (lambda s, ex: TCN(**nf_kw(s, futr_exog_list=ex, kernel_size=2, dilations=[1, 2, 4, 8, 16, 32, 64, 128],
+                                      encoder_hidden_size=128)), "Convolucional", "multi-salida", (True, False)),
+    "PatchTST": (lambda s, ex: PatchTST(**nf_kw(s, patch_len=24, stride=12, hidden_size=128, n_heads=8)),
+                 "Atención", "multi-salida", (False,)),
+    "TFT": (lambda s, ex: TFT(**nf_kw(s, futr_exog_list=ex, hidden_size=64)), "Atención", "multi-salida", (True,)),
+    # inference_windows_batch_size: por defecto (-1) valida con todas las ventanas a la vez (~45 GB en MPS)
+    "DeepAR": (lambda s, ex: DeepAR(**nf_kw(s, futr_exog_list=ex, lstm_hidden_size=128, inference_windows_batch_size=1024,
+                                            loss=DistributionLoss("StudentT", level=[80]))),
+               "Probabilístico", "autorregresiva (muestreo)", (True, False)),
 }
 
-def nf_run(name, months=None, test=True, key=None):
+def nf_run(name, months=None, test=True, key=None, exog=True):
     \"\"\"Entrena una vez (train + early stopping en val), mide validación y, si test, pronostica la prueba una vez.\"\"\"
-    make, family, strategy, cov = NF_MODELS[name]
+    make = lambda s: NF_MODELS[name][0](s, EXOG if exog else None)
+    key = (key or name) + ("" if exog else "-noexog")
     def go():
         m = NFModel(make, months)
         val = backtest(m, VAL_ORIGINS)
@@ -1210,15 +1218,21 @@ def nf_run(name, months=None, test=True, key=None):
             out["test"] = backtest(m, TEST_ORIGINS, fit=False)
             out["test"].update(train_s=val["train_s"], n_params=m.n_params)
         return out
-    out = cached(f"nf_{key or name}", go)
+    out = cached(f"nf_{key}", go)
     free_mps()
-    if test:
-        register(name, out["test"], family, strategy=strategy, covariates=cov, hw=HARDWARE)
-        VAL_MASE[name], MAKE[name] = out["val"]["MASE"], lambda seed=SEED: NFModel(make, seed=seed)
-    print(f"{key or name:14s} val MASE {out['val']['MASE']:.3f} | train {out['train_s']:.0f} s")
-    return out
+    print(f"{key:20s} val MASE {out['val']['MASE']:.3f} | train {out['train_s']:.0f} s")
+    return {**out, "make": make}
 
-NF_OUT = {name: nf_run(name) for name in NF_MODELS}
+NF_OUT, EXOG_VAL = {}, {}
+for name, (_, family, strategy, variants) in NF_MODELS.items():
+    runs = {ex: nf_run(name, exog=ex) for ex in variants}
+    ex = min(runs, key=lambda e: runs[e]["val"]["MASE"])                # selección solo con validación
+    EXOG_VAL[name] = {("con calendario" if e else "sin calendario"): r["val"]["MASE"] for e, r in runs.items()}
+    NF_OUT[name] = out = runs[ex]
+    register(name, out["test"], family, strategy=strategy, covariates="calendario" if ex else "no", hw=HARDWARE)
+    VAL_MASE[name], MAKE[name] = out["val"]["MASE"], lambda seed=SEED, make=out["make"]: NFModel(make, seed=seed)
+print("MASE de validación por variante:")
+print(pd.DataFrame(EXOG_VAL).T.round(3))
 show()
 """)
 
@@ -1237,10 +1251,11 @@ class ChronosModel:
         self.model_id, self.ctx = model_id, ctx
 
     def fit(self, train_end, val_end):
-        self.pipe = BaseChronosPipeline.from_pretrained(self.model_id, device_map=DEVICE.type, torch_dtype=torch.float32)
+        # CPU: en MPS, con la RAM compartida casi llena, la inferencia se quedaba sin memoria o en swap
+        self.pipe = BaseChronosPipeline.from_pretrained(self.model_id, device_map="cpu", torch_dtype=torch.float32)
         self.n_params = count_params(self.pipe.model)
 
-    def predict(self, origins, H, bs=1024):
+    def predict(self, origins, H, bs=256):                      # bs=1024 x 2048 de contexto agota la memoria de MPS
         t_o = Y.index.get_indexer(origins)
         ctx = Y.values[t_o[:, None] + np.arange(-self.ctx, 0)].transpose(0, 2, 1).reshape(-1, self.ctx)
         qs = [self.pipe.predict_quantiles(torch.tensor(ctx[i:i + bs], dtype=torch.float32), prediction_length=H,
@@ -1257,7 +1272,8 @@ def chronos_runs():
     return {"val": evaluate(val["fc"]), "test": test, "h168": backtest(cm, origins_for(168), 168, fit=False)}
 
 CHR = cached("chronos", chronos_runs)
-register("Chronos-Bolt", CHR["test"], "Fundacional", L_=2048, strategy="directa (cuantiles)", covariates="no", hw=HARDWARE)
+register("Chronos-Bolt", CHR["test"], "Fundacional", L_=2048, strategy="directa (cuantiles)", covariates="no",
+         hw="Apple M5 Pro (24 GB), CPU")
 register("Chronos-Bolt", CHR["h168"], "Fundacional", H_=168)
 REG["Chronos-Bolt"]["train_s"] = np.nan                         # zero-shot: solo inferencia
 VAL_MASE["Chronos-Bolt"] = CHR["val"]["MASE"]
@@ -1303,8 +1319,9 @@ HIST = pd.DataFrame({
     "DLinear": {3: ITERS["DLinear-L336-3m"]["val"]["MASE"], 12: ITERS["DLinear-L336-12m"]["val"]["MASE"],
                 30: ITERS["DLinear-L336"]["val"]["MASE"]},
     "LSTM": {3: ITERS["LSTM-3m"]["val"]["MASE"], 12: ITERS["LSTM-12m"]["val"]["MASE"], 30: ITERS["LSTM-base"]["val"]["MASE"]},
-    "PatchTST": {3: nf_run("PatchTST", 3, False, "PatchTST-3m")["val"]["MASE"],
-                 12: nf_run("PatchTST", 12, False, "PatchTST-12m")["val"]["MASE"], 30: NF_OUT["PatchTST"]["val"]["MASE"]},
+    "PatchTST": {3: nf_run("PatchTST", 3, False, "PatchTST-3m", exog=False)["val"]["MASE"],
+                 12: nf_run("PatchTST", 12, False, "PatchTST-12m", exog=False)["val"]["MASE"],
+                 30: NF_OUT["PatchTST"]["val"]["MASE"]},
 })
 HIST.index.name = "meses"
 HIST.round(3)
